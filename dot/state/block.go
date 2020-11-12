@@ -433,13 +433,14 @@ func (bs *BlockState) SetFinalizedHash(hash common.Hash, round, setID uint64) er
 
 	pruned := bs.bt.Prune(hash)
 	for _, rem := range pruned {
-		des, err := bs.IsDescendantOf(rem, hash)
-		if err != nil {
-			logger.Error("pruning block error", "error", err)
+		if des, err := bs.IsDescendantOf(rem, hash); des {
+			if err != nil {
+				logger.Error("pruning block error", "error", err)
+			}
+			continue
 		}
-		// TODO ed remove print and uncomment DeleteBlock (Not deleting for testing)
-		fmt.Printf("IS DES %v, error %v\n", des, err)
-		//err = bs.DeleteBlock(rem)
+
+		err := bs.DeleteBlock(rem)
 		if err != nil {
 			return err
 		}
@@ -566,6 +567,7 @@ func (bs *BlockState) AddBlockWithArrivalTime(block *types.Block, arrivalTime ui
 
 	go bs.checkBlock(hash, time.Duration(time.Second * 0))
 	go bs.checkBlock(hash, time.Duration(time.Second * 5))
+	go bs.checkBlock(hash, time.Duration(time.Second * 30))
 	go bs.notifyImported(block)
 	return err
 }
