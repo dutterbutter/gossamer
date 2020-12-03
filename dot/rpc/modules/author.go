@@ -157,8 +157,37 @@ func (cm *AuthorModule) RotateKeys(r *http.Request, req *EmptyRequest, res *KeyR
 }
 
 // SubmitAndWatchExtrinsic Submit and subscribe to watch an extrinsic until unsubscribed
-func (cm *AuthorModule) SubmitAndWatchExtrinsic(r *http.Request, req *Extrinsic, res *ExtrinsicStatus) error {
-	return nil
+func (cm *AuthorModule) SubmitAndWatchExtrinsic(r *http.Request, req *Extrinsic, res *ExtrinsicHashResponse) error {
+	// todo implement this as websocket
+	extBytes, err := common.HexToBytes(string(*req))
+	if err != nil {
+		return err
+	}
+
+	cm.logger.Trace("[rpc]", "extrinsic", extBytes)
+
+	ext := types.Extrinsic(extBytes)
+	// validate the transaction
+	txv, err := cm.runtimeAPI.ValidateTransaction(ext)
+	if err != nil {
+		return err
+	}
+
+	vtx := transaction.NewValidTransaction(ext, txv)
+
+	if cm.coreAPI.IsBlockProducer() {
+		hash := cm.txStateAPI.AddToPool(vtx)
+		*res = ExtrinsicHashResponse(hash.String())
+		cm.logger.Trace("submitted extrinsic", "tx", vtx, "hash", hash.String())
+	}
+
+	//broadcast
+	err = cm.coreAPI.HandleSubmittedExtrinsic(ext)
+	if err != nil {
+		cm.logger.Trace("failed to submit extrinsic to network", "error", err)
+	}
+
+	return err
 }
 
 // SubmitExtrinsic Submit a fully formatted extrinsic for block inclusion
