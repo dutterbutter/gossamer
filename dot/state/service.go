@@ -42,6 +42,7 @@ type Service struct {
 	Network     *NetworkState
 	Transaction *TransactionState
 	Epoch       *EpochState
+	closeCh     chan interface{}
 }
 
 // NewService create a new instance of Service
@@ -57,6 +58,7 @@ func NewService(path string, lvl log.Lvl) *Service {
 		Storage: nil,
 		Block:   nil,
 		Network: nil,
+		closeCh: make(chan interface{}),
 	}
 }
 
@@ -138,7 +140,6 @@ func (s *Service) Initialize(data *genesis.Data, header *types.Header, t *trie.T
 		s.Storage = storageState
 		s.Block = blockState
 		s.Epoch = epochState
-
 	} else {
 
 		// close database
@@ -161,7 +162,7 @@ func (s *Service) storeInitialValues(db chaindb.Database, data *genesis.Data, he
 	}
 
 	// write storage hash to database
-	err = StoreLatestStorageHash(db, t)
+	err = StoreLatestStorageHash(db, t.MustHash())
 	if err != nil {
 		return fmt.Errorf("failed to write storage hash to database: %s", err)
 	}
@@ -240,7 +241,7 @@ func (s *Service) Start() error {
 	// load current storage state
 	_, err = s.Storage.LoadFromDB(stateRoot)
 	if err != nil {
-		return fmt.Errorf("failed to get state root from database: %s", err)
+		return fmt.Errorf("failed to get load storage trie from database: %s", err)
 	}
 
 	// create network state
@@ -251,6 +252,9 @@ func (s *Service) Start() error {
 
 	// create epoch state
 	s.Epoch = NewEpochState(db)
+
+	// Start background goroutine to GC pruned keys.
+	go s.Storage.pruneStorage(s.closeCh)
 	return nil
 }
 
@@ -269,10 +273,12 @@ func (s *Service) Stop() error {
 		return errTrieDoesNotExist(head)
 	}
 
-	err = StoreLatestStorageHash(s.db, t)
+	err = StoreLatestStorageHash(s.db, head)
 	if err != nil {
 		return err
 	}
+
+	logger.Debug("storing latest storage trie", "hash", head)
 
 	err = s.Storage.StoreInDB(head)
 	if err != nil {
@@ -294,7 +300,14 @@ func (s *Service) Stop() error {
 	if err != nil {
 		return err
 	}
+	close(s.closeCh)
 
 	logger.Debug("stop", "best block hash", hash, "latest state root", thash)
+
+	err = s.db.Flush()
+	if err != nil {
+		return err
+	}
+
 	return s.db.Close()
 }

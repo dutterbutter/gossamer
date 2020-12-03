@@ -21,10 +21,10 @@ import (
 	"fmt"
 )
 
-// ErrNilBlockState is returned when BlockState is nik
+// ErrNilBlockState is returned when BlockState is nil
 var ErrNilBlockState = errors.New("cannot have nil BlockState")
 
-// ErrNilStorageState is returned when StorageState is nik
+// ErrNilStorageState is returned when StorageState is nil
 var ErrNilStorageState = errors.New("cannot have nil StorageState")
 
 // ErrNilKeystore is returned when keystore is nil
@@ -51,6 +51,9 @@ var ErrNilFinalityGadget = errors.New("cannot have nil FinalityGadget")
 // ErrNilConsensusMessageHandler is returned when trying to instantiate a Service without a FinalityMessageHandler
 var ErrNilConsensusMessageHandler = errors.New("cannot have nil ErrNilFinalityMessageHandler")
 
+// ErrEmptyRuntimeCode is returned when the storage :code is empty
+var ErrEmptyRuntimeCode = errors.New("new :code is empty")
+
 // ErrNilChannel is returned if a channel is nil
 func ErrNilChannel(s string) error {
 	return fmt.Errorf("cannot have nil channel %s", s)
@@ -62,6 +65,6 @@ func ErrMessageCast(s string) error {
 }
 
 // ErrUnsupportedMsgType is returned if we receive an unknown message type
-func ErrUnsupportedMsgType(d int) error {
+func ErrUnsupportedMsgType(d byte) error {
 	return fmt.Errorf("received unsupported message type %d", d)
 }

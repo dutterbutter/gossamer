@@ -250,10 +250,6 @@ func (s *Service) handleBlocks(ctx context.Context) {
 				continue
 			}
 
-			if err := s.storageState.StoreInDB(block.Header.StateRoot); err != nil {
-				s.logger.Warn("failed to store storage trie in database", "error", err)
-			}
-
 			if err := s.handleChainReorg(prev, block.Header.Hash()); err != nil {
 				s.logger.Warn("failed to re-add transactions to chain upon re-org", "error", err)
 			}
@@ -371,9 +367,14 @@ func (s *Service) handleRuntimeChanges(header *types.Header) error {
 	}
 
 	if !bytes.Equal(currentCodeHash[:], s.codeHash[:]) {
+		s.logger.Debug("detected runtime code change", "block", s.blockState.BestBlockHash(), "previous code hash", s.codeHash, "new code hash", currentCodeHash)
 		code, err := s.storageState.LoadCode(&sr)
 		if err != nil {
 			return err
+		}
+
+		if len(code) == 0 {
+			return ErrEmptyRuntimeCode
 		}
 
 		s.rt.Stop()
@@ -517,8 +518,18 @@ func (s *Service) HasKey(pubKeyStr string, keyType string) (bool, error) {
 }
 
 // GetRuntimeVersion gets the current RuntimeVersion
-func (s *Service) GetRuntimeVersion() (*runtime.VersionAPI, error) {
-	ts, err := s.storageState.TrieState(nil)
+func (s *Service) GetRuntimeVersion(bhash *common.Hash) (*runtime.VersionAPI, error) {
+	var stateRootHash *common.Hash
+	// If block hash is not nil then fetch the state root corresponding to the block.
+	if bhash != nil {
+		var err error
+		stateRootHash, err = s.storageState.GetStateRootFromBlock(bhash)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	ts, err := s.storageState.TrieState(stateRootHash)
 	if err != nil {
 		return nil, err
 	}
@@ -540,6 +551,24 @@ func (s *Service) HandleSubmittedExtrinsic(ext types.Extrinsic) error {
 }
 
 //GetMetadata calls runtime Metadata_metadata function
-func (s *Service) GetMetadata() ([]byte, error) {
+func (s *Service) GetMetadata(bhash *common.Hash) ([]byte, error) {
+	var (
+		stateRootHash *common.Hash
+		err           error
+	)
+
+	// If block hash is not nil then fetch the state root corresponding to the block.
+	if bhash != nil {
+		stateRootHash, err = s.storageState.GetStateRootFromBlock(bhash)
+		if err != nil {
+			return nil, err
+		}
+	}
+	ts, err := s.storageState.TrieState(stateRootHash)
+	if err != nil {
+		return nil, err
+	}
+
+	s.rt.SetContext(ts)
 	return s.rt.Metadata()
 }
