@@ -165,7 +165,7 @@ func (c *WSConn) handleComm() {
 			case "state_subscribeStorage":
 				scl, err2 := c.initStorageChangeListener(reqid, params)
 				if err2 != nil {
-					logger.Warn("failed to create state change listener", "error", err)
+					logger.Warn("failed to create state change listener", "error", err2)
 					continue
 				}
 				c.startListener(scl)
@@ -259,8 +259,10 @@ func (c *WSConn) initStorageChangeListener(reqID float64, params interface{}) (i
 			for _, p := range param.([]interface{}) {
 				scl.filter[p.(string)] = true
 			}
+		case string:
+			scl.filter[param.(string)] = true
 		default:
-			return 0, fmt.Errorf("unknow parameter type")
+			return 0, fmt.Errorf("unknow parameter type %T", param)
 		}
 	}
 	if c.storageAPI == nil {
