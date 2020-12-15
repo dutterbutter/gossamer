@@ -254,13 +254,13 @@ func (c *WSConn) initStorageChangeListener(reqID float64, params interface{}) (i
 	}
 	pA := params.([]interface{})
 	for _, param := range pA {
-		switch param.(type) {
+		switch param := param.(type) {
 		case []interface{}:
-			for _, p := range param.([]interface{}) {
+			for _, p := range param {
 				scl.filter[p.(string)] = true
 			}
 		case string:
-			scl.filter[param.(string)] = true
+			scl.filter[param] = true
 		default:
 			return 0, fmt.Errorf("unknow parameter type %T", param)
 		}
