@@ -61,8 +61,7 @@ jobs:
     steps:
       -
         name: Run stable tests
-        run: |
-          sh -c "make it-stable"
+        run: make it-stable
   docker-rpc-tests:
     runs-on: ubuntu-latest
     steps:
@@ -80,11 +79,10 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: false
-          tags: dutterbutter/gossamer:test
       -
         name: Run rpc tests
         run: |
-          docker run dutterbutter/gossamer:test sh -c "make it-rpc"
+          docker run ${{ jobs.docker_build.container.image }} sh -c "make it-rpc"
   docker-stress-tests:
     runs-on: ubuntu-latest
     steps:
