@@ -23,8 +23,8 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
           restore-keys: ${{ runner.os }}-go-
 
-      - name: Run unit tests
-        run: ./scripts/ci.sh
+      # - name: Run unit tests
+      #   run: ./scripts/ci.sh
 
       - name: Test State - Race
         run: make test-state-race
@@ -32,29 +32,29 @@ jobs:
       - name: Run build
         run: make build
 
-  publish-code-coverage:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/setup-go@v1
-        with:
-          go-version: ${{ matrix.go-version }}
-      - uses: actions/checkout@v2
+  # publish-code-coverage:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/setup-go@v1
+  #       with:
+  #         go-version: ${{ matrix.go-version }}
+  #     - uses: actions/checkout@v2
 
-      - name: Cache go modules
-        uses: actions/cache@v1
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
-          restore-keys: ${{ runner.os }}-go-
+  #     - name: Cache go modules
+  #       uses: actions/cache@v1
+  #       with:
+  #         path: ~/go/pkg/mod
+  #         key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
+  #         restore-keys: ${{ runner.os }}-go-
 
-      - name: Publish code coverage
-        uses: paambaati/codeclimate-action@v2.7.5
-        env:
-          CC_TEST_REPORTER_ID: abdad8b2e2ec0bfdd7af57d955c44e9470f4d174e744b824047f3037800f5b40
-        with:
-          coverageCommand: go test -short -coverprofile c.out ./...
-          prefix: github.com/ChainSafe/gossamer
-          debug: true
+  #     - name: Publish code coverage
+  #       uses: paambaati/codeclimate-action@v2.7.5
+  #       env:
+  #         CC_TEST_REPORTER_ID: abdad8b2e2ec0bfdd7af57d955c44e9470f4d174e744b824047f3037800f5b40
+  #       with:
+  #         coverageCommand: go test -short -coverprofile c.out ./...
+  #         prefix: github.com/ChainSafe/gossamer
+  #         debug: true
 
   docker-stable-tests:
     runs-on: ubuntu-latest
@@ -73,11 +73,10 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: false
-          tags: chainsafe/gossamer:latest
       -
         name: Run stable tests
         run: |
-          docker run chainsafe/gossamer:latest sh -c "make it-stable"
+          docker run ${{ steps.buildx.outputs.name }} sh -c "make it-stable"
   docker-rpc-tests:
     runs-on: ubuntu-latest
     steps:
@@ -95,11 +94,12 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: false
-          tags: chainsafe/gossamer:latest
-      -
-        name: Run rpc tests
-        run: |
-          docker run chainsafe/gossamer:latest sh -c "make it-rpc"
+          build-args: |
+            docker run sh -c "make it-rpc"
+      # -
+      #   name: Run rpc tests
+      #   run: |
+      #     docker run chainsafe/gossamer:latest sh -c "make it-rpc"
   docker-stress-tests:
     runs-on: ubuntu-latest
     steps:
@@ -117,11 +117,11 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: false
-          tags: chainsafe/gossamer:latest
+          # tags: chainsafe/gossamer:latest
       -
         name: Run stress
         run: |
-          docker run chainsafe/gossamer:latest sh -c "make it-stress"
+          docker run sh -c "make it-stress"
   docker-grandpa-tests:
     runs-on: ubuntu-latest
     steps:
@@ -139,8 +139,8 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: false
-          tags: chainsafe/gossamer:latest
+          # tags: chainsafe/gossamer:latest
       -
         name: Run stress
         run: |
-          docker run chainsafe/gossamer:latest sh -c "make it-grandpa"
+          docker run sh -c "make it-grandpa"
