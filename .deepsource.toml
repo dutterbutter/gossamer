@@ -21,16 +21,5 @@ enabled = true
 import_paths = ["github.com/dutterbutter/gossamer"]
 
 [[analyzers]]
-name = "javascript"
-enabled = true
-
-[analyzers.meta]
-environment = ["mocha"]
-
-[[analyzers]]
 name = "test-coverage"
-enabled = true
-
-[[analyzers]]
-name = "secrets"
 enabled = true

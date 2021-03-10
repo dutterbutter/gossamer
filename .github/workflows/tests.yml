@@ -39,6 +39,8 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
       - uses: actions/checkout@v2
+        with:
+            ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Cache go modules
         uses: actions/cache@v1
@@ -47,23 +49,6 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
           restore-keys: ${{ runner.os }}-go-
 
-      - name: Generate coverage report
-        run: |
-          go test ./... -short -coverprofile=coverage.out -covermode=atomic -timeout=20m
-
-      - name: Upload coverage report
-        uses: codecov/codecov-action@v1.0.2
-        with:
-          file: ./coverage.out
-          flags: unittests
-          name: coverage
-
-  publish-code-coverage2:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
       - name: Report results to DeepSource
         run: |
           # Generate coverage report

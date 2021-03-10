@@ -1,5 +1,0 @@
-ignore:
-  - "docs/**/*"
-  - "tests/**/*"
-  - "scripts/**/*" 
-  - "cmd/gossamer/test_inputs/*"
