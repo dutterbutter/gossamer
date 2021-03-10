@@ -58,6 +58,15 @@ jobs:
           flags: unittests
           name: coverage
 
+  publish-code-coverage2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report test coverage to DeepSource
+        uses: deepsourcelabs/test-coverage-action@master
+        with:
+          key: go
+          coverage-file: coverage.out
+          dsn: ${{ secrets.DEEPSOURCE_DSN }}
   # docker-stable-tests:
   #   runs-on: ubuntu-latest
   #   steps:
