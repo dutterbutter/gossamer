@@ -1,0 +1,36 @@
+version = 1
+
+test_patterns = ["**/*_test.go"]
+
+exclude_patterns = [
+    "docs/**/*",
+    "tests/**/*",
+    "scripts/**/*",
+    "cmd/gossamer/test_inputs/*",
+    "chain/**/*",
+    "dot/config/**/*",
+    "dot/rpc/modules/test_data",
+    "lib/runtime/test_data"
+]
+
+[[analyzers]]
+name = "go"
+enabled = true
+
+[analyzers.meta]
+import_paths = ["github.com/dutterbutter/gossamer"]
+
+[[analyzers]]
+name = "javascript"
+enabled = true
+
+[analyzers.meta]
+environment = ["mocha"]
+
+[[analyzers]]
+name = "test-coverage"
+enabled = true
+
+[[analyzers]]
+name = "secrets"
+enabled = true

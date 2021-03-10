@@ -47,104 +47,125 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
           restore-keys: ${{ runner.os }}-go-
 
-      - name: Publish code coverage
-        uses: paambaati/codeclimate-action@v2.7.5
-        env:
-          CC_TEST_REPORTER_ID: abdad8b2e2ec0bfdd7af57d955c44e9470f4d174e744b824047f3037800f5b40
-        with:
-          coverageCommand: go test -short -coverprofile c.out ./...
-          prefix: github.com/ChainSafe/gossamer
-          debug: true
+      - name: Generate coverage report
+        run: |
+          go test ./... -short -coverprofile=coverage.out -covermode=atomic -timeout=20m
 
-  docker-stable-tests:
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v1.0.2
+        with:
+          file: ./coverage.out
+          flags: unittests
+          name: coverage
+
+  publish-code-coverage2:
     runs-on: ubuntu-latest
     steps:
-      -
-        name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
-      -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-      -
-        name: Build
-        id: docker_build
-        uses: docker/build-push-action@v2
+      - uses: actions/checkout@v2
         with:
-          load: true
-          file: ./Dockerfile
-          platforms: linux/amd64
-          push: false
-          tags: chainsafe/gossamer:test
-      -
-        name: Run stable tests
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Report results to DeepSource
         run: |
-          docker run chainsafe/gossamer:test sh -c "make it-stable"
-  docker-rpc-tests:
-    runs-on: ubuntu-latest
-    steps:
-      -
-        name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
-      -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-      -
-        name: Build
-        id: docker_build
-        uses: docker/build-push-action@v2
-        with:
-          load: true
-          file: ./Dockerfile
-          platforms: linux/amd64
-          push: false
-          tags: chainsafe/gossamer:test
-      -
-        name: Run rpc tests
-        run: |
-          docker run chainsafe/gossamer:test sh -c "make it-rpc"
-  docker-stress-tests:
-    runs-on: ubuntu-latest
-    steps:
-      -
-        name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
-      -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-      -
-        name: Build
-        id: docker_build
-        uses: docker/build-push-action@v2
-        with:
-          load: true
-          file: ./Dockerfile
-          platforms: linux/amd64
-          push: false
-          tags: chainsafe/gossamer:test
-      -
-        name: Run stress
-        run: |
-          docker run chainsafe/gossamer:test sh -c "make it-stress"
-  docker-grandpa-tests:
-    runs-on: ubuntu-latest
-    steps:
-      -
-        name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
-      -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-      -
-        name: Build
-        id: docker_build
-        uses: docker/build-push-action@v2
-        with:
-          load: true
-          file: ./Dockerfile
-          platforms: linux/amd64
-          push: false
-          tags: chainsafe/gossamer:test
-      -
-        name: Run stress
-        run: |
-          docker run chainsafe/gossamer:test sh -c "make it-grandpa"
+          # Generate coverage report
+          go test ./... -short -coverprofile=coverage.out -covermode=atomic -timeout=20m
+
+          # Install deepsource CLI
+          curl https://deepsource.io/cli | sh
+
+          # From the root directory, run the report coverage command
+          ./bin/deepsource report --analyzer test-coverage --key go --value-file ./coverage.out
+
+        env:
+          DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
+  # docker-stable-tests:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     -
+  #       name: Set up QEMU
+  #       uses: docker/setup-qemu-action@v1
+  #     -
+  #       name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v1
+  #     -
+  #       name: Build
+  #       id: docker_build
+  #       uses: docker/build-push-action@v2
+  #       with:
+  #         load: true
+  #         file: ./Dockerfile
+  #         platforms: linux/amd64
+  #         push: false
+  #         tags: chainsafe/gossamer:test
+  #     -
+  #       name: Run stable tests
+  #       run: |
+  #         docker run chainsafe/gossamer:test sh -c "make it-stable"
+  # docker-rpc-tests:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     -
+  #       name: Set up QEMU
+  #       uses: docker/setup-qemu-action@v1
+  #     -
+  #       name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v1
+  #     -
+  #       name: Build
+  #       id: docker_build
+  #       uses: docker/build-push-action@v2
+  #       with:
+  #         load: true
+  #         file: ./Dockerfile
+  #         platforms: linux/amd64
+  #         push: false
+  #         tags: chainsafe/gossamer:test
+  #     -
+  #       name: Run rpc tests
+  #       run: |
+  #         docker run chainsafe/gossamer:test sh -c "make it-rpc"
+  # docker-stress-tests:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     -
+  #       name: Set up QEMU
+  #       uses: docker/setup-qemu-action@v1
+  #     -
+  #       name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v1
+  #     -
+  #       name: Build
+  #       id: docker_build
+  #       uses: docker/build-push-action@v2
+  #       with:
+  #         load: true
+  #         file: ./Dockerfile
+  #         platforms: linux/amd64
+  #         push: false
+  #         tags: chainsafe/gossamer:test
+  #     -
+  #       name: Run stress
+  #       run: |
+  #         docker run chainsafe/gossamer:test sh -c "make it-stress"
+  # docker-grandpa-tests:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     -
+  #       name: Set up QEMU
+  #       uses: docker/setup-qemu-action@v1
+  #     -
+  #       name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v1
+  #     -
+  #       name: Build
+  #       id: docker_build
+  #       uses: docker/build-push-action@v2
+  #       with:
+  #         load: true
+  #         file: ./Dockerfile
+  #         platforms: linux/amd64
+  #         push: false
+  #         tags: chainsafe/gossamer:test
+  #     -
+  #       name: Run stress
+  #       run: |
+  #         docker run chainsafe/gossamer:test sh -c "make it-grandpa"
