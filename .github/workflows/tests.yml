@@ -61,12 +61,22 @@ jobs:
   publish-code-coverage2:
     runs-on: ubuntu-latest
     steps:
-      - name: Report test coverage to DeepSource
-        uses: deepsourcelabs/test-coverage-action@master
+      - uses: actions/checkout@v2
         with:
-          key: go
-          coverage-file: coverage.out
-          dsn: ${{ secrets.DEEPSOURCE_DSN }}
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Report results to DeepSource
+        run: |
+          # Generate coverage report
+          go test ./... -short -coverprofile=coverage.out -covermode=atomic -timeout=20m
+
+          # Install deepsource CLI
+          curl https://deepsource.io/cli | sh
+
+          # From the root directory, run the report coverage command
+          ./bin/deepsource report --analyzer test-coverage --key go --value-file ./cover.out
+
+        env:
+          DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
   # docker-stable-tests:
   #   runs-on: ubuntu-latest
   #   steps:
