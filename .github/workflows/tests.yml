@@ -24,7 +24,7 @@ jobs:
           restore-keys: ${{ runner.os }}-go-
 
       - name: Run unit tests
-        run: make test
+        run: go test -short ./... -timeout=20m
 
       - name: Test State - Race
         run: make test-state-race
@@ -39,8 +39,6 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
       - uses: actions/checkout@v2
-        with:
-            ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Cache go modules
         uses: actions/cache@v1
@@ -49,19 +47,16 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
           restore-keys: ${{ runner.os }}-go-
 
-      - name: Report results to DeepSource
+      - name: Generate coverage report
         run: |
-          # Generate coverage report
           go test ./... -short -coverprofile=coverage.out -covermode=atomic -timeout=20m
-
-          # Install deepsource CLI
-          curl https://deepsource.io/cli | sh
-
-          # From the root directory, run the report coverage command
-          ./bin/deepsource report --analyzer test-coverage --key go --value-file ./coverage.out
-
-        env:
-          DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
+      - uses: codecov/codecov-action@v1
+        with:
+          token: 'd8b73b1e-7d6f-4f6d-a325-39ce269101cf'
+          files: ./coverage.out
+          flags: unittests
+          name: coverage
+          verbose: trues
   # docker-stable-tests:
   #   runs-on: ubuntu-latest
   #   steps:
