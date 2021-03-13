@@ -1,18 +1,5 @@
-# Copyright 2019 ChainSafe Systems (ON) Corp.
-# This file is part of gossamer.
-#
-# The gossamer library is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Lesser General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# The gossamer library is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU Lesser General Public License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with the gossamer library. If not, see <http://www.gnu.org/licenses/>.
+# Copyright 2020 ChainSafe Systems
+# SPDX-License-Identifier: LGPL-3.0-only
 
 # Source: https://github.com/golangci/golangci-lint/blob/master/.golangci.example.yml
 # options for analysis running
@@ -92,13 +79,13 @@ linters-settings:
     check-shadowing: true
 
     # settings per analyzer
-#    settings:
-#      printf: # analyzer name, run `go tool vet help` to see all analyzers
-#        funcs: # run `go tool vet help printf` to see available settings for `printf` analyzer
-#          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Infof
-#          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Warnf
-#          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Errorf
-#          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Fatalf
+    settings:
+      printf: # analyzer name, run `go tool vet help` to see all analyzers
+        funcs: # run `go tool vet help printf` to see available settings for `printf` analyzer
+          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Infof
+          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Warnf
+          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Errorf
+          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Fatalf
   golint:
     # minimal confidence for issues, default is 0.8
     min-confidence: 0.8
@@ -106,12 +93,12 @@ linters-settings:
     # simplify code: gofmt with `-s` option, true by default
     simplify: true
   goimports:
-    # put imports beginning with prefix after 3rd-party packages;
-    # it's a comma-separated list of prefixes
-    #local-prefixes: github.com/org/project
+  # put imports beginning with prefix after 3rd-party packages;
+  # it's a comma-separated list of prefixes
+  #local-prefixes: github.com/org/project
   gocyclo:
     # minimal code complexity to report, 30 by default (but we recommend 10-20)
-    min-complexity: 30
+    min-complexity: 10
   maligned:
     # print struct with more effective memory layout or not, false by default
     suggest-new: true
@@ -123,18 +110,11 @@ linters-settings:
     min-len: 3
     # minimal occurrences count to trigger, 3 by default
     min-occurrences: 3
-  depguard:
-    list-type: blacklist
-    include-go-root: false
-    packages:
-      - github.com/davecgh/go-spew/spew
   misspell:
     # Correct spellings using locale preferences for US or UK.
     # Default is to use a neutral variety of English.
     # Setting locale to US will correct the British spelling of 'colour' to 'color'.
     locale: US
-    ignore-words:
-      - gossamer
   lll:
     # max line length, lines longer will be reported. Default is 120.
     # '\t' is counted as 1 character by default, and can be changed with the tab-width option
@@ -187,24 +167,17 @@ linters:
     - govet
     - gofmt
     - goimports
-    - varcheck
-    - misspell
-    - ineffassign
-    - gosimple
-    - unconvert
-    - goconst
-    - errcheck
-    - staticcheck
-    - megacheck
-    - goimports
     - gosec
-    - bodyclose
-    - goprintffuncname
-    - golint
-    - depguard
-    - gocyclo
+    - errcheck
+  enable-all: false
+  disable:
+    - maligned
+    - prealloc
     - unparam
-
+  disable-all: false
+  presets:
+    - bugs
+    - unused
   fast: false
 
 
@@ -224,6 +197,7 @@ issues:
         - errcheck
         - dupl
         - gosec
+        - golint
 
     # Exclude known linters from partially hard-vendored code,
     # which is impossible to exclude via "nolint" comments.
@@ -236,27 +210,6 @@ issues:
     - linters:
         - staticcheck
       text: "SA9003:"
-
-    - linters:
-        - golint
-      text: "package comment should be of the form"
-
-    - linters:
-        - golint
-      text: "don't use ALL_CAPS in Go names;"
-
-    - linters:
-        - golint
-      text: "don't use underscores in Go names;"
-
-    - linters:
-        - gocyclo
-      text: "cyclomatic complexity 36 of func " #runtime/imports.go: registerImports
-
-    - linters:
-        - gocyclo
-      text: "cyclomatic complexity 42 of func " # codec/decode.go: (*Decoder).DecodeTuple
-
 
     # Exclude lll issues for long lines with go:generate
     - linters:
