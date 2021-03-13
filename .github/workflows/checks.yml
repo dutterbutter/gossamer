@@ -10,7 +10,8 @@ jobs:
       GOPATH: /home/runner/work/dutterbutter/gossamer/go
     steps:
       - uses: actions/checkout@v2
-
+        with:
+          path: 'go/src/github.com/dutterbutter/gossamer'
       - name: Run go fmt
         run: diff -u <(echo -n) <(gofmt -d -s .)
 
