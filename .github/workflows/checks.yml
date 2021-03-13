@@ -15,7 +15,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v2
         with:
-          working-directory: "~/go/github.com/dutterbutter/gossamer"
+          working-directory: ".~/go/github.com/dutterbutter/gossamer"
           version: 'latest'
           args: --config ./golangci.yml
 #   vet-check:
