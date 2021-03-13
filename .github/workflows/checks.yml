@@ -6,6 +6,8 @@ env:
 jobs:
   linter-check:
     runs-on: ubuntu-latest
+    env:
+      GOPATH: /home/runner/work/dutterbutter/gossamer/go
     steps:
       - uses: actions/checkout@v2
 
@@ -16,6 +18,7 @@ jobs:
         uses: golangci/golangci-lint-action@v2
         with:
           version: 'latest'
+          working-directory: go/src/github.com/dutterbutter/gossamer
           args: run --config=go/src/github.com/dutterbutter/gossamer/golangci.yml ./...
 #   vet-check:
 #     runs-on: ubuntu-latest
