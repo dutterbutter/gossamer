@@ -16,7 +16,7 @@ jobs:
         uses: golangci/golangci-lint-action@v2
         with:
           version: 'latest'
-          args: --config .~/go/github.com/dutterbutter/gossamer/golangci.yml
+          args: run --config=go/src/github.com/dutterbutter/gossamer/golangci.yml ./...
 #   vet-check:
 #     runs-on: ubuntu-latest
 #     steps:
