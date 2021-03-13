@@ -12,3 +12,5 @@ ignore:
   - "dot/config/**/*"
   - "dot/rpc/modules/test_data"
   - "lib/runtime/test_data" 
+  - "**/errors.go"
+  - "**/*/errors.go"
