@@ -54,7 +54,7 @@ jobs:
         with:
           token: 'd8b73b1e-7d6f-4f6d-a325-39ce269101cf'
           files: ./coverage.out
-          flags: unittests
+          flags: unit-tests
           name: coverage
           verbose: trues
   # docker-stable-tests:
