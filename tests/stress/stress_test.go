@@ -22,10 +22,16 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	gosstypes "github.com/ChainSafe/gossamer/dot/types"
+	"github.com/ChainSafe/gossamer/lib/common"
 	"github.com/ChainSafe/gossamer/tests/utils"
+	gsrpc "github.com/centrifuge/go-substrate-rpc-client/v2"
+	"github.com/centrifuge/go-substrate-rpc-client/v2/signature"
+	"github.com/centrifuge/go-substrate-rpc-client/v2/types"
 
 	log "github.com/ChainSafe/log15"
 	"github.com/stretchr/testify/require"
@@ -42,22 +48,34 @@ func TestMain(m *testing.M) {
 	}
 
 	utils.CreateConfigNoBabe()
-	utils.CreateConfigBabeMaxThreshold()
 	utils.CreateDefaultConfig()
+	utils.CreateConfigNoGrandpa()
+	utils.CreateConfigNotAuthority()
 
-	// TODO: implement test log flag
-	utils.SetLogLevel(log.LvlInfo)
+	defer func() {
+		os.Remove(utils.ConfigNoBABE)
+		os.Remove(utils.ConfigDefault)
+		os.Remove(utils.ConfigNoGrandpa)
+		os.Remove(utils.ConfigNotAuthority)
+	}()
+
+	logLvl := log.LvlInfo
+	if utils.LOGLEVEL != "" {
+		var err error
+		logLvl, err = log.LvlFromString(utils.LOGLEVEL)
+		if err != nil {
+			panic(fmt.Sprint("Invalid log level: ", err))
+		}
+	}
+
+	utils.SetLogLevel(logLvl)
 	h := log.StreamHandler(os.Stdout, log.TerminalFormat())
-	logger.SetHandler(log.LvlFilterHandler(log.LvlInfo, h))
+	logger.SetHandler(log.LvlFilterHandler(logLvl, h))
 
 	utils.GenerateGenesisThreeAuth()
 
 	// Start all tests
 	code := m.Run()
-
-	os.Remove(utils.ConfigNoBABE)
-	os.Remove(utils.ConfigBABEMaxThreshold)
-	os.Remove(utils.ConfigDefault)
 	os.Exit(code)
 }
 
@@ -84,13 +102,14 @@ func TestSync_SingleBlockProducer(t *testing.T) {
 	utils.SetLogLevel(log.LvlInfo)
 
 	// start block producing node first
-	node, err := utils.RunGossamer(t, numNodes-1, utils.TestDir(t, utils.KeyList[numNodes-1]), utils.GenesisDefault, utils.ConfigBABEMaxThreshold, false)
+	//nolint
+	node, err := utils.RunGossamer(t, numNodes-1, utils.TestDir(t, utils.KeyList[numNodes-1]), utils.GenesisDev, utils.ConfigNoGrandpa, false)
 	require.NoError(t, err)
 
 	// wait and start rest of nodes - if they all start at the same time the first round usually doesn't complete since
 	// all nodes vote for different blocks.
 	time.Sleep(time.Second * 15)
-	nodes, err := utils.InitializeAndStartNodes(t, numNodes-1, utils.GenesisDefault, utils.ConfigNoBABE)
+	nodes, err := utils.InitializeAndStartNodes(t, numNodes-1, utils.GenesisDev, utils.ConfigNotAuthority)
 	require.NoError(t, err)
 	nodes = append(nodes, node)
 
@@ -170,12 +189,12 @@ func TestSync_SingleSyncingNode(t *testing.T) {
 	utils.SetLogLevel(log.LvlInfo)
 
 	// start block producing node
-	alice, err := utils.RunGossamer(t, 0, utils.TestDir(t, utils.KeyList[0]), utils.GenesisDefault, utils.ConfigBABEMaxThreshold, false)
+	alice, err := utils.RunGossamer(t, 0, utils.TestDir(t, utils.KeyList[0]), utils.GenesisDev, utils.ConfigDefault, false)
 	require.NoError(t, err)
 	time.Sleep(time.Second * 15)
 
 	// start syncing node
-	bob, err := utils.RunGossamer(t, 1, utils.TestDir(t, utils.KeyList[1]), utils.GenesisDefault, utils.ConfigNoBABE, false)
+	bob, err := utils.RunGossamer(t, 1, utils.TestDir(t, utils.KeyList[1]), utils.GenesisDev, utils.ConfigNoBABE, false)
 	require.NoError(t, err)
 
 	nodes := []*utils.Node{alice, bob}
@@ -217,12 +236,11 @@ func TestSync_ManyProducers(t *testing.T) {
 }
 
 func TestSync_Bench(t *testing.T) {
-	//t.Skip() // TODO: fix this test
 	utils.SetLogLevel(log.LvlInfo)
 	numBlocks := 64
 
 	// start block producing node
-	alice, err := utils.RunGossamer(t, 0, utils.TestDir(t, utils.KeyList[1]), utils.GenesisDefault, utils.ConfigBABEMaxThreshold, false)
+	alice, err := utils.RunGossamer(t, 0, utils.TestDir(t, utils.KeyList[1]), utils.GenesisDev, utils.ConfigNoGrandpa, false)
 	require.NoError(t, err)
 
 	for {
@@ -243,7 +261,7 @@ func TestSync_Bench(t *testing.T) {
 	t.Log("BABE paused")
 
 	// start syncing node
-	bob, err := utils.RunGossamer(t, 1, utils.TestDir(t, utils.KeyList[0]), utils.GenesisDefault, utils.ConfigNoBABE, false)
+	bob, err := utils.RunGossamer(t, 1, utils.TestDir(t, utils.KeyList[0]), utils.GenesisDev, utils.ConfigNotAuthority, false)
 	require.NoError(t, err)
 
 	nodes := []*utils.Node{alice, bob}
@@ -296,7 +314,8 @@ func TestSync_Restart(t *testing.T) {
 	utils.SetLogLevel(log.LvlInfo)
 
 	// start block producing node first
-	node, err := utils.RunGossamer(t, numNodes-1, utils.TestDir(t, utils.KeyList[numNodes-1]), utils.GenesisDefault, utils.ConfigBABEMaxThreshold, false)
+	//nolint
+	node, err := utils.RunGossamer(t, numNodes-1, utils.TestDir(t, utils.KeyList[numNodes-1]), utils.GenesisDefault, utils.ConfigDefault, false)
 	require.NoError(t, err)
 
 	// wait and start rest of nodes
@@ -340,4 +359,147 @@ func TestSync_Restart(t *testing.T) {
 		time.Sleep(time.Second * 5)
 	}
 	close(done)
+}
+
+func TestSync_SubmitExtrinsic(t *testing.T) {
+	t.Log("starting gossamer...")
+
+	//numNodes := 3
+	// index of node to submit tx to
+	idx := 0 // TODO: randomise this
+
+	// start block producing node first
+	node, err := utils.RunGossamer(t, 0, utils.TestDir(t, utils.KeyList[0]), utils.GenesisDev, utils.ConfigNoGrandpa, false)
+	require.NoError(t, err)
+	nodes := []*utils.Node{node}
+
+	// Start rest of nodes
+	// nodes, err := utils.InitializeAndStartNodes(t, numNodes-1, utils.GenesisDev, utils.ConfigNoBABE)
+	// require.NoError(t, err)
+	node, err = utils.RunGossamer(t, 1, utils.TestDir(t, utils.KeyList[1]), utils.GenesisDev, utils.ConfigNotAuthority, false)
+	require.NoError(t, err)
+	nodes = append(nodes, node)
+	node, err = utils.RunGossamer(t, 2, utils.TestDir(t, utils.KeyList[2]), utils.GenesisDev, utils.ConfigNotAuthority, false)
+	require.NoError(t, err)
+	nodes = append(nodes, node)
+
+	defer func() {
+		t.Log("going to tear down gossamer...")
+		errList := utils.StopNodes(t, nodes)
+		require.Len(t, errList, 0)
+	}()
+
+	// send tx to non-authority node
+	api, err := gsrpc.NewSubstrateAPI(fmt.Sprintf("http://localhost:%s", nodes[idx].RPCPort))
+	require.NoError(t, err)
+
+	meta, err := api.RPC.State.GetMetadataLatest()
+	require.NoError(t, err)
+
+	// Create a call, transferring 12345 units to Bob
+	bob, err := types.NewAddressFromHexAccountID("0x90b5ab205c6974c9ea841be688864633dc9ca8a357843eeacf2314649965fe22")
+	require.NoError(t, err)
+
+	c, err := types.NewCall(meta, "Balances.transfer", bob, types.NewUCompactFromUInt(12345))
+	require.NoError(t, err)
+
+	// Create the extrinsic
+	ext := types.NewExtrinsic(c)
+
+	genesisHash, err := api.RPC.Chain.GetBlockHash(0)
+	require.NoError(t, err)
+
+	rv, err := api.RPC.State.GetRuntimeVersionLatest()
+	require.NoError(t, err)
+
+	key, err := types.CreateStorageKey(meta, "System", "Account", signature.TestKeyringPairAlice.PublicKey, nil)
+	require.NoError(t, err)
+
+	var accInfo types.AccountInfo
+	ok, err := api.RPC.State.GetStorageLatest(key, &accInfo)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	o := types.SignatureOptions{
+		BlockHash:          genesisHash,
+		Era:                types.ExtrinsicEra{IsImmortalEra: true},
+		GenesisHash:        genesisHash,
+		Nonce:              types.NewUCompactFromUInt(uint64(accInfo.Nonce)),
+		SpecVersion:        rv.SpecVersion,
+		Tip:                types.NewUCompactFromUInt(0),
+		TransactionVersion: rv.TransactionVersion,
+	}
+
+	// Sign the transaction using Alice's default account
+	err = ext.Sign(signature.TestKeyringPairAlice, o)
+	require.NoError(t, err)
+
+	extEnc, err := types.EncodeToHexString(ext)
+	require.NoError(t, err)
+
+	prevHeader := utils.GetChainHead(t, nodes[idx]) // get starting header so that we can lookup blocks by number later
+
+	// Send the extrinsic
+	hash, err := api.RPC.Author.SubmitExtrinsic(ext)
+	require.NoError(t, err)
+	require.NotEqual(t, hash, common.Hash{})
+
+	time.Sleep(time.Second * 10)
+
+	// wait until there's no more pending extrinsics
+	for i := 0; i < maxRetries; i++ {
+		exts := getPendingExtrinsics(t, nodes[idx])
+		if len(exts) == 0 {
+			break
+		}
+
+		time.Sleep(time.Second)
+	}
+
+	header := utils.GetChainHead(t, nodes[idx])
+
+	// search from child -> parent blocks for extrinsic
+	var (
+		resExts    []gosstypes.Extrinsic
+		extInBlock *big.Int
+	)
+
+	for i := 0; i < maxRetries; i++ {
+		block := utils.GetBlock(t, nodes[idx], header.ParentHash)
+		if block == nil {
+			// couldn't get block, increment retry counter
+			continue
+		}
+
+		header = block.Header
+		logger.Debug("got block from node", "header", header, "body", block.Body, "node", nodes[idx].Key)
+
+		if block.Body != nil {
+			resExts, err = block.Body.AsExtrinsics()
+			require.NoError(t, err, block.Body)
+
+			logger.Debug("extrinsics", "exts", resExts)
+			if len(resExts) >= 2 {
+				extInBlock = block.Header.Number
+				break
+			}
+		}
+
+		if header.Hash() == prevHeader.Hash() {
+			t.Fatal("could not find extrinsic in any blocks")
+		}
+	}
+
+	var included bool
+	for _, ext := range resExts {
+		logger.Debug("comparing", "expected", extEnc, "in block", common.BytesToHex(ext))
+		if strings.Compare(extEnc, common.BytesToHex(ext)) == 0 {
+			included = true
+		}
+	}
+
+	require.True(t, included)
+
+	hashes, err := compareBlocksByNumberWithRetry(t, nodes, extInBlock.String())
+	require.NoError(t, err, hashes)
 }

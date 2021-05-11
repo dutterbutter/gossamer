@@ -18,8 +18,8 @@ package network
 
 import (
 	"errors"
-	"math/rand"
 	"sync"
+	"unsafe"
 
 	libp2pnetwork "github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -27,6 +27,8 @@ import (
 )
 
 var errCannotValidateHandshake = errors.New("failed to validate handshake")
+
+var maxHandshakeSize = unsafe.Sizeof(BlockAnnounceHandshake{}) //nolint
 
 // Handshake is the interface all handshakes for notifications protocols must implement
 type Handshake interface {
@@ -48,31 +50,58 @@ type (
 	MessageDecoder = func([]byte) (NotificationsMessage, error)
 
 	// NotificationsMessageHandler is called when a (non-handshake) message is received over a notifications stream.
-	NotificationsMessageHandler = func(peer peer.ID, msg NotificationsMessage) error
+	NotificationsMessageHandler = func(peer peer.ID, msg NotificationsMessage) (propagate bool, err error)
 )
 
 type notificationsProtocol struct {
-	subProtocol   protocol.ID
-	getHandshake  HandshakeGetter
-	handshakeData map[peer.ID]*handshakeData
-	mapMu         sync.RWMutex
+	protocolID         protocol.ID
+	getHandshake       HandshakeGetter
+	handshakeValidator HandshakeValidator
+
+	inboundHandshakeData  *sync.Map //map[peer.ID]*handshakeData
+	outboundHandshakeData *sync.Map //map[peer.ID]*handshakeData
+}
+
+func (n *notificationsProtocol) getHandshakeData(pid peer.ID, inbound bool) (handshakeData, bool) {
+	if inbound {
+		data, has := n.inboundHandshakeData.Load(pid)
+		if !has {
+			return handshakeData{}, false
+		}
+
+		return data.(handshakeData), true
+	}
+
+	data, has := n.outboundHandshakeData.Load(pid)
+	if !has {
+		return handshakeData{}, false
+	}
+
+	return data.(handshakeData), true
 }
 
 type handshakeData struct {
-	received    bool
-	validated   bool
-	handshake   Handshake
-	outboundMsg NotificationsMessage
+	received  bool
+	validated bool
+	handshake Handshake
+	stream    libp2pnetwork.Stream
+	*sync.Mutex
+}
+
+func newHandshakeData(received, validated bool, stream libp2pnetwork.Stream) handshakeData {
+	return handshakeData{
+		received:  received,
+		validated: validated,
+		stream:    stream,
+		Mutex:     new(sync.Mutex),
+	}
 }
 
 func createDecoder(info *notificationsProtocol, handshakeDecoder HandshakeDecoder, messageDecoder MessageDecoder) messageDecoder {
-	return func(in []byte, peer peer.ID) (Message, error) {
+	return func(in []byte, peer peer.ID, inbound bool) (Message, error) {
 		// if we don't have handshake data on this peer, or we haven't received the handshake from them already,
 		// assume we are receiving the handshake
-		info.mapMu.RLock()
-		defer info.mapMu.RUnlock()
-
-		if hsData, has := info.handshakeData[peer]; !has || !hsData.received {
+		if hsData, has := info.getHandshakeData(peer, inbound); !has || !hsData.received {
 			return handshakeDecoder(in)
 		}
 
@@ -81,9 +110,9 @@ func createDecoder(info *notificationsProtocol, handshakeDecoder HandshakeDecode
 	}
 }
 
-func (s *Service) createNotificationsMessageHandler(info *notificationsProtocol, handshakeValidator HandshakeValidator, messageHandler NotificationsMessageHandler) messageHandler {
+func (s *Service) createNotificationsMessageHandler(info *notificationsProtocol, messageHandler NotificationsMessageHandler) messageHandler {
 	return func(stream libp2pnetwork.Stream, m Message) error {
-		if m == nil || info == nil || handshakeValidator == nil || messageHandler == nil {
+		if m == nil || info == nil || info.handshakeValidator == nil || messageHandler == nil {
 			return nil
 		}
 
@@ -97,142 +126,186 @@ func (s *Service) createNotificationsMessageHandler(info *notificationsProtocol,
 			return errors.New("message is not NotificationsMessage")
 		}
 
-		logger.Debug("received message on notifications sub-protocol", "sub-protocol", info.subProtocol, "message", msg)
-
 		if msg.IsHandshake() {
+			logger.Trace("received handshake on notifications sub-protocol", "protocol", info.protocolID,
+				"message", msg,
+				"peer", stream.Conn().RemotePeer(),
+			)
+
 			hs, ok := msg.(Handshake)
 			if !ok {
 				return errors.New("failed to convert message to Handshake")
 			}
 
-			info.mapMu.Lock()
-			defer info.mapMu.Unlock()
-
 			// if we are the receiver and haven't received the handshake already, validate it
-			if _, has := info.handshakeData[peer]; !has {
-				logger.Trace("receiver: validating handshake", "sub-protocol", info.subProtocol)
-				info.handshakeData[peer] = &handshakeData{
-					validated: false,
-					received:  true,
-				}
+			// note: if this function is being called, it's being called via SetStreamHandler,
+			// ie it is an inbound stream and we only send the handshake over it.
+			// we do not send any other data over this stream, we would need to open a new outbound stream.
+			if _, has := info.getHandshakeData(peer, true); !has {
+				logger.Trace("receiver: validating handshake", "protocol", info.protocolID)
 
-				err := handshakeValidator(peer, hs)
+				hsData := newHandshakeData(true, false, stream)
+				info.inboundHandshakeData.Store(peer, hsData)
+
+				err := info.handshakeValidator(peer, hs)
 				if err != nil {
-					logger.Error("failed to validate handshake", "sub-protocol", info.subProtocol, "peer", peer, "error", err)
+					logger.Trace("failed to validate handshake", "protocol", info.protocolID, "peer", peer, "error", err)
 					return errCannotValidateHandshake
 				}
 
-				info.handshakeData[peer].validated = true
+				hsData.validated = true
+				info.inboundHandshakeData.Store(peer, hsData)
 
 				// once validated, send back a handshake
 				resp, err := info.getHandshake()
 				if err != nil {
-					logger.Error("failed to get handshake", "sub-protocol", info.subProtocol, "error", err)
+					logger.Warn("failed to get handshake", "protocol", info.protocolID, "error", err)
 					return err
 				}
 
-				err = s.host.send(peer, info.subProtocol, resp)
+				err = s.host.writeToStream(stream, resp)
 				if err != nil {
-					logger.Debug("failed to send handshake", "sub-protocol", info.subProtocol, "peer", peer, "error", err)
+					logger.Trace("failed to send handshake", "protocol", info.protocolID, "peer", peer, "error", err)
 					return err
 				}
-				logger.Trace("receiver: sent handshake", "sub-protocol", info.subProtocol, "peer", peer)
-			}
-
-			// if we are the initiator and haven't received the handshake already, validate it
-			if hsData, has := info.handshakeData[peer]; has && !hsData.validated {
-				logger.Trace("sender: validating handshake")
-				err := handshakeValidator(peer, hs)
-				if err != nil {
-					logger.Debug("failed to validate handshake", "sub-protocol", info.subProtocol, "peer", peer, "error", err)
-					info.handshakeData[peer].validated = false
-					return errCannotValidateHandshake
-				}
-
-				info.handshakeData[peer].validated = true
-				info.handshakeData[peer].received = true
-				logger.Trace("sender: validated handshake", "sub-protocol", info.subProtocol, "peer", peer)
-			} else if hsData.received {
-				return nil
-			}
-
-			// if we are the initiator, send the message
-			if hsData, has := info.handshakeData[peer]; has && hsData.validated && hsData.received && hsData.outboundMsg != nil {
-				logger.Trace("sender: sending message", "sub-protocol", info.subProtocol)
-				err := s.host.send(peer, info.subProtocol, hsData.outboundMsg)
-				if err != nil {
-					logger.Debug("failed to send message", "sub-protocol", info.subProtocol, "peer", peer, "error", err)
-					return err
-				}
+				logger.Trace("receiver: sent handshake", "protocol", info.protocolID, "peer", peer)
 				return nil
 			}
 
 			return nil
 		}
 
-		err := messageHandler(peer, msg)
+		logger.Debug("received message on notifications sub-protocol", "protocol", info.protocolID,
+			"message", msg,
+			"peer", stream.Conn().RemotePeer(),
+		)
+
+		propagate, err := messageHandler(peer, msg)
 		if err != nil {
 			return err
 		}
 
-		// TODO: improve this by keeping track of who you've received/sent messages from
-		if !s.noGossip {
-			seen := s.gossip.hasSeen(msg)
-			if !seen {
-				s.broadcastExcluding(info, peer, msg)
-			}
+		if !propagate || s.noGossip {
+			return nil
+		}
+
+		seen := s.gossip.hasSeen(msg)
+		if !seen {
+			s.broadcastExcluding(info, peer, msg)
 		}
 
 		return nil
 	}
 }
 
-// gossipExcluding sends a message to each connected peer except the given peer
-// Used for notifications sub-protocols to gossip a message
+func (s *Service) sendData(peer peer.ID, hs Handshake, info *notificationsProtocol, msg NotificationsMessage) {
+	hsData, has := info.getHandshakeData(peer, false)
+	if has && !hsData.validated {
+		// peer has sent us an invalid handshake in the past, ignore
+		return
+	}
+
+	if !has || !hsData.received || hsData.stream == nil {
+		if !has {
+			hsData = newHandshakeData(false, false, nil)
+		}
+
+		hsData.Lock()
+		defer hsData.Unlock()
+
+		logger.Trace("sending outbound handshake", "protocol", info.protocolID, "peer", peer, "message", hs)
+		stream, err := s.host.send(peer, info.protocolID, hs)
+		if err != nil {
+			logger.Trace("failed to send message to peer", "peer", peer, "error", err)
+			return
+		}
+
+		hsData.stream = stream
+		info.outboundHandshakeData.Store(peer, hsData)
+
+		if info.handshakeValidator == nil {
+			return
+		}
+
+		hs, err := readHandshake(stream, decodeBlockAnnounceHandshake)
+		if err != nil {
+			logger.Trace("failed to read handshake", "protocol", info.protocolID, "peer", peer, "error", err)
+			_ = stream.Close()
+			return
+		}
+
+		hsData.received = true
+
+		err = info.handshakeValidator(peer, hs)
+		if err != nil {
+			logger.Trace("failed to validate handshake", "protocol", info.protocolID, "peer", peer, "error", err)
+			hsData.validated = false
+			info.outboundHandshakeData.Store(peer, hsData)
+			return
+		}
+
+		hsData.validated = true
+		info.outboundHandshakeData.Store(peer, hsData)
+		logger.Trace("sender: validated handshake", "protocol", info.protocolID, "peer", peer)
+	}
+
+	if s.host.messageCache != nil {
+		added, err := s.host.messageCache.put(peer, msg)
+		if err != nil {
+			logger.Error("failed to add message to cache", "peer", peer, "error", err)
+			return
+		}
+
+		if !added {
+			return
+		}
+	}
+
+	// we've completed the handshake with the peer, send message directly
+	logger.Trace("sending message", "protocol", info.protocolID, "peer", peer, "message", msg)
+
+	err := s.host.writeToStream(hsData.stream, msg)
+	if err != nil {
+		logger.Trace("failed to send message to peer", "peer", peer, "error", err)
+	}
+}
+
+// broadcastExcluding sends a message to each connected peer except the given peer,
+// and peers that have previously sent us the message or who we have already sent the message to.
+// used for notifications sub-protocols to gossip a message
 func (s *Service) broadcastExcluding(info *notificationsProtocol, excluding peer.ID, msg NotificationsMessage) {
 	logger.Trace(
 		"broadcasting message from notifications sub-protocol",
-		"sub-protocol", info.subProtocol,
+		"protocol", info.protocolID,
 	)
 
 	hs, err := info.getHandshake()
 	if err != nil {
-		logger.Error("failed to get handshake", "protocol", info.subProtocol, "error", err)
+		logger.Error("failed to get handshake", "protocol", info.protocolID, "error", err)
 		return
 	}
 
 	peers := s.host.peers()
-	rand.Shuffle(len(peers), func(i, j int) { peers[i], peers[j] = peers[j], peers[i] })
-
-	for i, peer := range peers { // TODO: check if stream is open, if not, open and send handshake
-		// TODO: configure this and determine ideal ratio, as well as when to use broadcast vs gossip
-		if i > len(peers)/3 {
-			return
-		}
-
+	for _, peer := range peers {
 		if peer == excluding {
 			continue
 		}
 
-		info.mapMu.RLock()
-		defer info.mapMu.RUnlock()
-
-		if hsData, has := info.handshakeData[peer]; !has || !hsData.received {
-			info.handshakeData[peer] = &handshakeData{
-				validated:   false,
-				outboundMsg: msg,
-			}
-
-			logger.Trace("sending handshake", "protocol", info.subProtocol, "peer", peer, "message", hs)
-			err = s.host.send(peer, info.subProtocol, hs)
-		} else {
-			// we've already completed the handshake with the peer, send message directly
-			logger.Trace("sending message", "protocol", info.subProtocol, "peer", peer, "message", msg)
-			err = s.host.send(peer, info.subProtocol, msg)
-		}
-
-		if err != nil {
-			logger.Error("failed to send message to peer", "peer", peer, "error", err)
-		}
+		go s.sendData(peer, hs, info, msg)
 	}
+}
+
+func readHandshake(stream libp2pnetwork.Stream, decoder HandshakeDecoder) (Handshake, error) {
+	msgBytes := make([]byte, maxHandshakeSize)
+	tot, err := readStream(stream, msgBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	hs, err := decoder(msgBytes[:tot])
+	if err != nil {
+		return nil, err
+	}
+
+	return hs, nil
 }

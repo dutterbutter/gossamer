@@ -9,6 +9,7 @@ import (
 
 	"github.com/ChainSafe/chaindb"
 	"github.com/ChainSafe/gossamer/dot/types"
+	"github.com/ChainSafe/gossamer/lib/utils"
 
 	"github.com/stretchr/testify/require"
 )
@@ -28,16 +29,13 @@ func createTestBlockTree(header *types.Header, depth int, db chaindb.Database) (
 
 	// create base tree
 	for i := 1; i <= depth; i++ {
-		block := &types.Block{
-			Header: &types.Header{
-				ParentHash: previousHash,
-				Number:     big.NewInt(int64(i)),
-			},
-			Body: &types.Body{},
+		header := &types.Header{
+			ParentHash: previousHash,
+			Number:     big.NewInt(int64(i)),
 		}
 
-		hash := block.Header.Hash()
-		bt.AddBlock(block, 0)
+		hash := header.Hash()
+		bt.AddBlock(header, 0)
 		previousHash = hash
 
 		isBranch := r.Intn(2)
@@ -54,17 +52,14 @@ func createTestBlockTree(header *types.Header, depth int, db chaindb.Database) (
 		previousHash = branch.hash
 
 		for i := int(branch.depth.Uint64()); i <= depth; i++ {
-			block := &types.Block{
-				Header: &types.Header{
-					ParentHash: previousHash,
-					Number:     big.NewInt(int64(i)),
-					Digest:     types.Digest{newMockDigestItem(rand.Intn(256))},
-				},
-				Body: &types.Body{},
+			header := &types.Header{
+				ParentHash: previousHash,
+				Number:     big.NewInt(int64(i)),
+				Digest:     types.Digest{utils.NewMockDigestItem(rand.Intn(256))},
 			}
 
-			hash := block.Header.Hash()
-			bt.AddBlock(block, 0)
+			hash := header.Hash()
+			bt.AddBlock(header, 0)
 			previousHash = hash
 		}
 	}

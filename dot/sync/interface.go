@@ -44,6 +44,7 @@ type BlockState interface {
 	GetJustification(common.Hash) ([]byte, error)
 	SetJustification(hash common.Hash, data []byte) error
 	SetFinalizedHash(hash common.Hash, round, setID uint64) error
+	AddBlockToBlockTree(header *types.Header) error
 }
 
 // StorageState is the interface for the storage state
@@ -51,6 +52,7 @@ type StorageState interface {
 	TrieState(root *common.Hash) (*rtstorage.TrieState, error)
 	StoreTrie(ts *rtstorage.TrieState) error
 	LoadCodeHash(*common.Hash) (common.Hash, error)
+	SetSyncing(bool)
 }
 
 // TransactionState is the interface for transaction queue methods
@@ -67,12 +69,15 @@ type BlockProducer interface {
 
 // DigestHandler is the interface for the consensus digest handler
 type DigestHandler interface {
-	Start()
-	Stop()
 	HandleConsensusDigest(*types.ConsensusDigest, *types.Header) error
 }
 
 // Verifier deals with block verification
 type Verifier interface {
 	VerifyBlock(header *types.Header) error
+}
+
+// FinalityGadget implements justification verification functionality
+type FinalityGadget interface {
+	VerifyBlockJustification([]byte) error
 }

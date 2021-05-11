@@ -25,10 +25,12 @@ import (
 	"sync"
 	"time"
 
+	gssmrmetrics "github.com/ChainSafe/gossamer/dot/metrics"
+	"github.com/ChainSafe/gossamer/dot/telemetry"
 	"github.com/ChainSafe/gossamer/lib/common"
 	"github.com/ChainSafe/gossamer/lib/services"
-
 	log "github.com/ChainSafe/log15"
+	"github.com/ethereum/go-ethereum/metrics"
 	libp2pnetwork "github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
@@ -55,7 +57,7 @@ var (
 type (
 	// messageDecoder is passed on readStream to decode the data from the stream into a message.
 	// since messages are decoded based on context, this is different for every sub-protocol.
-	messageDecoder = func([]byte, peer.ID) (Message, error)
+	messageDecoder = func([]byte, peer.ID, bool) (Message, error)
 	// messageHandler is passed on readStream to handle the resulting message. it should return an error only if the stream is to be closed
 	messageHandler = func(stream libp2pnetwork.Stream, msg Message) error
 )
@@ -87,6 +89,10 @@ type Service struct {
 	noDiscover  bool
 	noMDNS      bool
 	noGossip    bool // internal option
+
+	// telemetry
+	telemetryInterval time.Duration
+	closeCh           chan interface{}
 }
 
 // NewService creates a new network service from the configuration and message channels
@@ -140,8 +146,11 @@ func NewService(cfg *Config) (*Service, error) {
 		syncer:                 cfg.Syncer,
 		notificationsProtocols: make(map[byte]*notificationsProtocol),
 		lightRequest:           make(map[peer.ID]struct{}),
+		telemetryInterval:      cfg.telemetryInterval,
+		closeCh:                make(chan interface{}),
 	}
 
+	network.syncQueue = newSyncQueue(network)
 	return network, err
 }
 
@@ -169,15 +178,11 @@ func (s *Service) Start() error {
 		s.ctx, s.cancel = context.WithCancel(context.Background())
 	}
 
-	s.syncQueue = newSyncQueue(s)
-	s.syncQueue.start()
-
 	connMgr := s.host.h.ConnManager().(*ConnManager)
 	connMgr.registerDisconnectHandler(func(p peer.ID) {
 		s.syncQueue.peerScore.Delete(p)
 	})
 
-	s.host.h.Network().SetConnHandler(s.handleConn)
 	s.host.registerStreamHandler(syncID, s.handleSyncStream)
 	s.host.registerStreamHandler(lightID, s.handleLightStream)
 
@@ -190,6 +195,7 @@ func (s *Service) Start() error {
 		s.validateBlockAnnounceHandshake,
 		decodeBlockAnnounceMessage,
 		s.handleBlockAnnounceMessage,
+		false,
 	)
 	if err != nil {
 		logger.Warn("failed to register notifications protocol", "sub-protocol", blockAnnounceID, "error", err)
@@ -204,10 +210,14 @@ func (s *Service) Start() error {
 		validateTransactionHandshake,
 		decodeTransactionMessage,
 		s.handleTransactionMessage,
+		false,
 	)
 	if err != nil {
 		logger.Warn("failed to register notifications protocol", "sub-protocol", blockAnnounceID, "error", err)
 	}
+
+	// since this opens block announce streams, it should happen after the protocol is registered
+	s.host.h.Network().SetConnHandler(s.handleConn)
 
 	// log listening addresses to console
 	for _, addr := range s.host.multiaddrs() {
@@ -217,9 +227,6 @@ func (s *Service) Start() error {
 	if !s.noBootstrap {
 		s.host.bootstrap()
 	}
-
-	// TODO: ensure bootstrap has connected to bootnodes and addresses have been
-	// registered by the host before mDNS attempts to connect to bootnodes
 
 	if !s.noMDNS {
 		s.mdns.start()
@@ -237,9 +244,40 @@ func (s *Service) Start() error {
 	time.Sleep(time.Millisecond * 500)
 
 	logger.Info("started network service", "supported protocols", s.host.protocols())
+	s.syncQueue.start()
+
+	if s.cfg.PublishMetrics {
+		go s.collectNetworkMetrics()
+	}
 
 	go s.logPeerCount()
+	go s.publishNetworkTelemetry(s.closeCh)
+	go s.sentBlockIntervalTelemetry()
+
 	return nil
+}
+
+func (s *Service) collectNetworkMetrics() {
+	metrics.Enabled = true
+	for {
+		peerCount := metrics.GetOrRegisterGauge("network/node/peerCount", metrics.DefaultRegistry)
+		totalConn := metrics.GetOrRegisterGauge("network/node/totalConnection", metrics.DefaultRegistry)
+		networkLatency := metrics.GetOrRegisterGauge("network/node/latency", metrics.DefaultRegistry)
+		syncedBlocks := metrics.GetOrRegisterGauge("service/blocks/sync", metrics.DefaultRegistry)
+
+		peerCount.Update(int64(s.host.peerCount()))
+		totalConn.Update(int64(len(s.host.h.Network().Conns())))
+		networkLatency.Update(int64(s.host.h.Peerstore().LatencyEWMA(s.host.id())))
+
+		num, err := s.blockState.BestBlockNumber()
+		if err != nil {
+			syncedBlocks.Update(0)
+		} else {
+			syncedBlocks.Update(num.Int64())
+		}
+
+		time.Sleep(gssmrmetrics.Refresh)
+	}
 }
 
 func (s *Service) logPeerCount() {
@@ -249,8 +287,50 @@ func (s *Service) logPeerCount() {
 	}
 }
 
+func (s *Service) publishNetworkTelemetry(done chan interface{}) {
+	ticker := time.NewTicker(s.telemetryInterval)
+	defer ticker.Stop()
+
+main:
+	for {
+		select {
+		case <-done:
+			break main
+
+		case <-ticker.C:
+			o := s.host.bwc.GetBandwidthTotals()
+			telemetry.GetInstance().SendNetworkData(telemetry.NewNetworkData(s.host.peerCount(), o.RateIn, o.RateOut))
+		}
+
+	}
+}
+
+func (s *Service) sentBlockIntervalTelemetry() {
+	for {
+		best, err := s.blockState.BestBlockHeader()
+		if err != nil {
+			continue
+		}
+		finalized, err := s.blockState.GetFinalizedHeader(0, 0) //nolint
+		if err != nil {
+			continue
+		}
+
+		telemetry.GetInstance().SendBlockIntervalData(&telemetry.BlockIntervalData{
+			BestHash:           best.Hash(),
+			BestHeight:         best.Number,
+			FinalizedHash:      finalized.Hash(),
+			FinalizedHeight:    finalized.Number,
+			TXCount:            0, // todo (ed) determine where to get tx count
+			UsedStateCacheSize: 0, // todo (ed) determine where to get used_state_cache_size
+		})
+		time.Sleep(s.telemetryInterval)
+	}
+}
+
 func (s *Service) handleConn(conn libp2pnetwork.Conn) {
 	// give new peers a slight weight
+	// TODO: do this once handshake is received
 	s.syncQueue.updatePeerScore(conn.RemotePeer(), 1)
 }
 
@@ -313,6 +393,19 @@ func (s *Service) Stop() error {
 		logger.Error("Failed to close host", "error", err)
 	}
 
+	// check if closeCh is closed, if not, close it.
+mainloop:
+	for {
+		select {
+		case _, hasMore := <-s.closeCh:
+			if !hasMore {
+				break mainloop
+			}
+		default:
+			close(s.closeCh)
+		}
+	}
+
 	return nil
 }
 
@@ -325,6 +418,7 @@ func (s *Service) RegisterNotificationsProtocol(sub protocol.ID,
 	handshakeValidator HandshakeValidator,
 	messageDecoder MessageDecoder,
 	messageHandler NotificationsMessageHandler,
+	overwriteProtocol bool,
 ) error {
 	s.notificationsMu.Lock()
 	defer s.notificationsMu.Unlock()
@@ -333,31 +427,49 @@ func (s *Service) RegisterNotificationsProtocol(sub protocol.ID,
 		return errors.New("notifications protocol with message type already exists")
 	}
 
+	var protocolID protocol.ID
+	if overwriteProtocol {
+		protocolID = sub
+	} else {
+		protocolID = s.host.protocolID + sub
+	}
+
 	np := &notificationsProtocol{
-		subProtocol:   sub,
-		getHandshake:  handshakeGetter,
-		handshakeData: make(map[peer.ID]*handshakeData),
+		protocolID:            protocolID,
+		getHandshake:          handshakeGetter,
+		handshakeValidator:    handshakeValidator,
+		inboundHandshakeData:  new(sync.Map),
+		outboundHandshakeData: new(sync.Map),
 	}
 	s.notificationsProtocols[messageID] = np
 
 	connMgr := s.host.h.ConnManager().(*ConnManager)
-	connMgr.registerCloseHandler(s.host.protocolID+sub, func(peerID peer.ID) {
-		np.mapMu.Lock()
-		defer np.mapMu.Unlock()
-
-		if _, ok := np.handshakeData[peerID]; ok {
+	connMgr.registerCloseHandler(protocolID, func(peerID peer.ID) {
+		if _, ok := np.getHandshakeData(peerID, true); ok {
 			logger.Trace(
-				"Cleaning up handshake data",
+				"Cleaning up inbound handshake data",
 				"peer", peerID,
-				"protocol", s.host.protocolID+sub,
+				"protocol", protocolID,
 			)
-			delete(np.handshakeData, peerID)
+			np.inboundHandshakeData.Delete(peerID)
+		}
+
+		if _, ok := np.getHandshakeData(peerID, false); ok {
+			logger.Trace(
+				"Cleaning up outbound handshake data",
+				"peer", peerID,
+				"protocol", protocolID,
+			)
+			np.outboundHandshakeData.Delete(peerID)
 		}
 	})
 
 	info := s.notificationsProtocols[messageID]
 
-	s.host.registerStreamHandler(sub, func(stream libp2pnetwork.Stream) {
+	decoder := createDecoder(info, handshakeDecoder, messageDecoder)
+	handlerWithValidate := s.createNotificationsMessageHandler(info, messageHandler)
+
+	s.host.registerStreamHandlerWithOverwrite(sub, overwriteProtocol, func(stream libp2pnetwork.Stream) {
 		logger.Trace("received stream", "sub-protocol", sub)
 		conn := stream.Conn()
 		if conn == nil {
@@ -365,15 +477,10 @@ func (s *Service) RegisterNotificationsProtocol(sub protocol.ID,
 			return
 		}
 
-		p := conn.RemotePeer()
-
-		decoder := createDecoder(info, handshakeDecoder, messageDecoder)
-		handlerWithValidate := s.createNotificationsMessageHandler(info, handshakeValidator, messageHandler)
-
-		s.readStream(stream, p, decoder, handlerWithValidate)
+		s.readStream(stream, decoder, handlerWithValidate)
 	})
 
-	logger.Info("registered notifications sub-protocol", "protocol", s.host.protocolID+sub)
+	logger.Info("registered notifications sub-protocol", "protocol", protocolID)
 	return nil
 }
 
@@ -413,27 +520,15 @@ func (s *Service) SendMessage(msg NotificationsMessage) {
 		return
 	}
 
-	logger.Warn("message not supported by any notifications protocol", "msg type", msg.Type())
-
-	// TODO: deprecate
-	// broadcast message to connected peers
-	s.host.broadcast(msg)
+	logger.Error("message not supported by any notifications protocol", "msg type", msg.Type())
 }
 
 // handleLightStream handles streams with the <protocol-id>/light/2 protocol ID
 func (s *Service) handleLightStream(stream libp2pnetwork.Stream) {
-	conn := stream.Conn()
-	if conn == nil {
-		logger.Error("Failed to get connection from stream")
-		_ = stream.Close()
-		return
-	}
-
-	peer := conn.RemotePeer()
-	s.readStream(stream, peer, s.decodeLightMessage, s.handleLightMsg)
+	s.readStream(stream, s.decodeLightMessage, s.handleLightMsg)
 }
 
-func (s *Service) decodeLightMessage(in []byte, peer peer.ID) (Message, error) {
+func (s *Service) decodeLightMessage(in []byte, peer peer.ID, _ bool) (Message, error) {
 	s.lightRequestMu.RLock()
 	defer s.lightRequestMu.RUnlock()
 
@@ -451,10 +546,15 @@ func (s *Service) decodeLightMessage(in []byte, peer peer.ID) (Message, error) {
 	return msg, err
 }
 
-func (s *Service) readStream(stream libp2pnetwork.Stream, peer peer.ID, decoder messageDecoder, handler messageHandler) {
+func isInbound(stream libp2pnetwork.Stream) bool {
+	return stream.Stat().Direction == libp2pnetwork.DirInbound
+}
+
+func (s *Service) readStream(stream libp2pnetwork.Stream, decoder messageDecoder, handler messageHandler) {
 	var (
 		maxMessageSize uint64 = maxBlockResponseSize // TODO: determine actual max message size
 		msgBytes              = make([]byte, maxMessageSize)
+		peer                  = stream.Conn().RemotePeer()
 	)
 
 	for {
@@ -462,34 +562,33 @@ func (s *Service) readStream(stream libp2pnetwork.Stream, peer peer.ID, decoder 
 		if err == io.EOF {
 			continue
 		} else if err != nil {
-			logger.Trace("failed to read from stream", "protocol", stream.Protocol(), "error", err)
+			logger.Trace("failed to read from stream", "peer", stream.Conn().RemotePeer(), "protocol", stream.Protocol(), "error", err)
 			_ = stream.Close()
 			return
 		}
 
 		// decode message based on message type
-		msg, err := decoder(msgBytes[:tot], peer)
+		msg, err := decoder(msgBytes[:tot], peer, isInbound(stream))
 		if err != nil {
-			logger.Trace("Failed to decode message from peer", "peer", peer, "err", err)
+			logger.Trace("failed to decode message from peer", "protocol", stream.Protocol(), "err", err)
 			continue
 		}
 
 		logger.Trace(
-			"Received message from peer",
+			"received message from peer",
 			"host", s.host.id(),
 			"peer", peer,
 			"msg", msg.String(),
 		)
 
-		go func() {
-			// handle message based on peer status and message type
-			err = handler(stream, msg)
-			if err != nil {
-				logger.Warn("Failed to handle message from stream", "message", msg, "error", err)
-				_ = stream.Close()
-				return
-			}
-		}()
+		err = handler(stream, msg)
+		if err != nil {
+			logger.Debug("failed to handle message from stream", "message", msg, "error", err)
+			_ = stream.Close()
+			return
+		}
+
+		s.host.bwc.LogRecvMessage(int64(tot))
 	}
 }
 
@@ -555,27 +654,23 @@ func (s *Service) NetworkState() common.NetworkState {
 
 // Peers returns information about connected peers needed for the rpc server
 func (s *Service) Peers() []common.PeerInfo {
-	peers := []common.PeerInfo{}
+	var peers []common.PeerInfo
 
 	s.notificationsMu.RLock()
-	defer s.notificationsMu.RUnlock()
+	np := s.notificationsProtocols[BlockAnnounceMsgType]
+	s.notificationsMu.RUnlock()
 
 	for _, p := range s.host.peers() {
-		if s.notificationsProtocols[BlockAnnounceMsgType].handshakeData[p] == nil {
+		data, has := np.getHandshakeData(p, true)
+		if !has || data.handshake == nil {
 			peers = append(peers, common.PeerInfo{
 				PeerID: p.String(),
 			})
 
 			continue
 		}
-		peerHandshakeMessage := s.notificationsProtocols[BlockAnnounceMsgType].handshakeData[p].handshake
-		if peerHandshakeMessage == nil {
-			peers = append(peers, common.PeerInfo{
-				PeerID: p.String(),
-			})
-			continue
-		}
 
+		peerHandshakeMessage := data.handshake
 		peers = append(peers, common.PeerInfo{
 			PeerID:     p.String(),
 			Roles:      peerHandshakeMessage.(*BlockAnnounceHandshake).Roles,
@@ -583,6 +678,7 @@ func (s *Service) Peers() []common.PeerInfo {
 			BestNumber: uint64(peerHandshakeMessage.(*BlockAnnounceHandshake).BestBlockNumber),
 		})
 	}
+
 	return peers
 }
 

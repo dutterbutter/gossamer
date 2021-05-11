@@ -43,10 +43,10 @@ var (
 		Name:  "roles",
 		Usage: "Roles of the gossamer node",
 	}
-	// RewindFlag rewinds the head of the chain by the given number of blocks. Useful for development
+	// RewindFlag rewinds the head of the chain to the given block number. Useful for development
 	RewindFlag = cli.IntFlag{
 		Name:  "rewind",
-		Usage: "Rewind head of chain by given number of blocks",
+		Usage: "Rewind head of chain to the given block number",
 	}
 )
 
@@ -86,14 +86,48 @@ var (
 		Name:  "memprof",
 		Usage: "File to write memory profile to",
 	}
+
+	// PublishMetricsFlag publishes node metrics to prometheus.
+	PublishMetricsFlag = cli.BoolFlag{
+		Name:  "publish-metrics",
+		Usage: "Publish node metrics",
+	}
+
+	// MetricsPortFlag set metric listen port
+	MetricsPortFlag = cli.StringFlag{
+		Name:  "metrics-port",
+		Usage: "Set metric listening port ",
+	}
+
+	// NoTelemetryFlag stops publishing telemetry to default defined in genesis.json
+	NoTelemetryFlag = cli.BoolFlag{
+		Name:  "no-telemetry",
+		Usage: "Disable connecting to the Substrate telemetry server",
+	}
 )
 
 // Initialization-only flags
 var (
-	// GenesisRawFlag Path to raw genesis JSON file
-	GenesisRawFlag = cli.StringFlag{
-		Name:  "genesis-raw",
-		Usage: "Path to raw genesis JSON file",
+	// GenesisFlag is the path to a genesis JSON file
+	GenesisFlag = cli.StringFlag{
+		Name:  "genesis",
+		Usage: "Path to genesis JSON file",
+	}
+)
+
+// ImportState-only flags
+var (
+	StateFlag = cli.StringFlag{
+		Name:  "state",
+		Usage: "Path to JSON file consisting of key-value pairs",
+	}
+	HeaderFlag = cli.StringFlag{
+		Name:  "header",
+		Usage: "Path to JSON file of block header corresponding to the given state",
+	}
+	FirstSlotFlag = cli.IntFlag{
+		Name:  "first-slot",
+		Usage: "The first BABE slot of the network",
 	}
 )
 
@@ -103,9 +137,13 @@ var (
 		Name:  "raw",
 		Usage: "Output as raw genesis JSON",
 	}
-	GenesisFlag = cli.StringFlag{
-		Name:  "genesis",
+	GenesisSpecFlag = cli.StringFlag{
+		Name:  "genesis-spec",
 		Usage: "Path to human-readable genesis JSON file",
+	}
+	OutputSpecFlag = cli.StringFlag{
+		Name:  "output",
+		Usage: "Path to output the recently created genesis JSON file",
 	}
 )
 
@@ -202,7 +240,7 @@ var (
 	// ImportRawFlag imports a raw private key
 	ImportRawFlag = cli.StringFlag{
 		Name:  "import-raw",
-		Usage: "Import encrypted keystore file generated with gossamer",
+		Usage: "Import  a raw private key",
 	}
 	// ListFlag List node keys
 	ListFlag = cli.BoolFlag{
@@ -263,6 +301,13 @@ var (
 		WSFlag,
 		WSExternalFlag,
 		WSPortFlag,
+
+		// metrics flag
+		PublishMetricsFlag,
+		MetricsPortFlag,
+
+		// telemetry flags
+		NoTelemetryFlag,
 	}
 )
 
@@ -274,18 +319,19 @@ var (
 	// InitFlags are flags that are valid for use with the init subcommand
 	InitFlags = append([]cli.Flag{
 		ForceFlag,
-		GenesisRawFlag,
+		GenesisFlag,
 	}, GlobalFlags...)
 
 	BuildSpecFlags = append([]cli.Flag{
 		RawFlag,
-		GenesisFlag,
+		GenesisSpecFlag,
+		OutputSpecFlag,
 	}, GlobalFlags...)
 
 	// ExportFlags are the flags that are valid for use with the export subcommand
 	ExportFlags = append([]cli.Flag{
 		ForceFlag,
-		GenesisRawFlag,
+		GenesisFlag,
 	}, append(GlobalFlags, StartupFlags...)...)
 
 	// AccountFlags are flags that are valid for use with the account subcommand
@@ -299,12 +345,21 @@ var (
 		Sr25519Flag,
 		Secp256k1Flag,
 	}, GlobalFlags...)
+
+	ImportStateFlags = []cli.Flag{
+		BasePathFlag,
+		ChainFlag,
+		ConfigFlag,
+		StateFlag,
+		HeaderFlag,
+		FirstSlotFlag,
+	}
 )
 
 // FixFlagOrder allow us to use various flag order formats (ie, `gossamer init
 // --config config.toml` and `gossamer --config config.toml init`). FixFlagOrder
 // only fixes global flags, all local flags must come after the subcommand (ie,
-// `gossamer --force --config config.toml init` will not recognize `--force` but
+// `gossamer --force --config config.toml init` will not recognise `--force` but
 // `gossamer init --force --config config.toml` will work as expected).
 func FixFlagOrder(f func(ctx *cli.Context) error) func(*cli.Context) error {
 	return func(ctx *cli.Context) error {

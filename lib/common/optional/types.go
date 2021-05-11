@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/big"
 
 	"github.com/ChainSafe/gossamer/lib/common"
@@ -165,6 +166,98 @@ func (x *Bytes) Decode(r io.Reader) (*Bytes, error) {
 	return x, nil
 }
 
+// DecodeBytes return an optional Bytes from scale encoded data
+func (x *Bytes) DecodeBytes(data []byte) (*Bytes, error) {
+	if len(data) == 0 || data[0] > 1 {
+		return nil, ErrInvalidOptional
+	}
+
+	x.exists = data[0] != 0
+
+	if x.exists {
+		decData, err := scale.Decode(data[1:], []byte{})
+		if err != nil {
+			return nil, err
+		}
+		x.value = decData.([]byte)
+	} else {
+		x.value = nil
+	}
+
+	return x, nil
+}
+
+// FixedSizeBytes represents an optional FixedSizeBytes type. It does not length-encode the value when encoding.
+type FixedSizeBytes struct {
+	exists bool
+	value  []byte
+}
+
+// NewFixedSizeBytes returns a new optional.FixedSizeBytes
+func NewFixedSizeBytes(exists bool, value []byte) *FixedSizeBytes {
+	return &FixedSizeBytes{
+		exists: exists,
+		value:  value,
+	}
+}
+
+// Exists returns true if the value is Some, false if it is None.
+func (x *FixedSizeBytes) Exists() bool {
+	return x.exists
+}
+
+// Value returns the []byte value. It returns nil if it is None.
+func (x *FixedSizeBytes) Value() []byte {
+	return x.value
+}
+
+// String returns the value as a string.
+func (x *FixedSizeBytes) String() string {
+	if !x.exists {
+		return none
+	}
+	return fmt.Sprintf("%x", x.value)
+}
+
+// Set sets the exists and value fields.
+func (x *FixedSizeBytes) Set(exists bool, value []byte) {
+	x.exists = exists
+	x.value = value
+}
+
+// Encode returns the SCALE encoded optional
+func (x *FixedSizeBytes) Encode() ([]byte, error) {
+	if x == nil || !x.exists {
+		return []byte{0}, nil
+	}
+
+	return append([]byte{1}, x.value...), nil
+}
+
+// Decode return an optional FixedSizeBytes from scale encoded data
+func (x *FixedSizeBytes) Decode(r io.Reader) (*FixedSizeBytes, error) {
+	exists, err := common.ReadByte(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if exists > 1 {
+		return nil, ErrInvalidOptional
+	}
+
+	x.exists = exists != 0
+
+	if x.exists {
+		value, err := ioutil.ReadAll(r)
+		if err != nil {
+			return nil, err
+		}
+		x.value = value
+	}
+
+	return x, nil
+}
+
 // Boolean represents an optional bool type.
 type Boolean struct {
 	exists bool
@@ -172,7 +265,7 @@ type Boolean struct {
 }
 
 // NewBoolean returns a new optional.Boolean
-func NewBoolean(exists bool, value bool) *Boolean {
+func NewBoolean(exists, value bool) *Boolean {
 	return &Boolean{
 		exists: exists,
 		value:  value,

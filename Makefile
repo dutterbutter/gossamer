@@ -37,6 +37,7 @@ proto:
 test:
 	@echo "  >  \033[32mRunning tests...\033[0m "
 	#GOBIN=$(PWD)/bin go run scripts/ci.go test
+	git lfs pull
 	go test -short -coverprofile c.out ./... -timeout=20m
 
 ## it-stable: Runs Integration Tests Stable mode
@@ -86,9 +87,9 @@ build-debug:
 	@echo "  >  \033[32mBuilding binary...\033[0m "
 	GOBIN=$(PWD)/bin go run scripts/ci.go install-debug
 
-## init: Initialize gossamer using the default genesis and toml configuration files
+## init: Initialise gossamer using the default genesis and toml configuration files
 init:
-	./bin/gossamer --key alice init --genesis-raw chain/gssmr/genesis-raw.json --force
+	./bin/gossamer --key alice init --genesis chain/gssmr/genesis.json --force
 
 ## init-repo: Set initial configuration for the repo
 init-repo:

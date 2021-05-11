@@ -35,6 +35,8 @@ import (
 	"golang.org/x/crypto/ssh/terminal" //nolint
 )
 
+const confirmCharacter = "Y"
+
 // setupLogger sets up the gossamer logger
 func setupLogger(ctx *cli.Context) (log.Lvl, error) {
 	handler := log.StreamHandler(os.Stdout, log.TerminalFormat())
@@ -75,8 +77,8 @@ func confirmMessage(msg string) bool {
 	fmt.Print("> ")
 	for {
 		text, _ := reader.ReadString('\n')
-		text = strings.Replace(text, "\n", "", -1)
-		return strings.Compare("Y", text) == 0
+		text = strings.ReplaceAll(text, "\n", "")
+		return strings.Compare(confirmCharacter, strings.ToUpper(text)) == 0
 	}
 }
 
@@ -88,10 +90,12 @@ func newTestConfig(t *testing.T) *dot.Config {
 
 	cfg := &dot.Config{
 		Global: dot.GlobalConfig{
-			Name:     dot.GssmrConfig().Global.Name,
-			ID:       dot.GssmrConfig().Global.ID,
-			BasePath: dir,
-			LogLvl:   log.LvlInfo,
+			Name:           dot.GssmrConfig().Global.Name,
+			ID:             dot.GssmrConfig().Global.ID,
+			BasePath:       dir,
+			LogLvl:         log.LvlInfo,
+			PublishMetrics: dot.GssmrConfig().Global.PublishMetrics,
+			MetricsPort:    dot.GssmrConfig().Global.MetricsPort,
 		},
 		Log: dot.LogConfig{
 			CoreLvl:           log.LvlInfo,
@@ -122,7 +126,6 @@ func newTestConfigWithFile(t *testing.T) (*dot.Config, *os.File) {
 	require.NoError(t, err)
 
 	tomlCfg := dotConfigToToml(cfg)
-
 	cfgFile := exportConfig(tomlCfg, file.Name())
 	return cfg, cfgFile
 }

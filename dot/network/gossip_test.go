@@ -32,7 +32,6 @@ func TestGossip(t *testing.T) {
 	}
 
 	basePathA := utils.NewTestBasePath(t, "nodeA")
-	defer utils.RemoveTestDir(t)
 
 	configA := &Config{
 		BasePath:    basePathA,
@@ -43,7 +42,6 @@ func TestGossip(t *testing.T) {
 	}
 
 	nodeA := createTestService(t, configA)
-	defer nodeA.Stop()
 	handlerA := newTestStreamHandler(testBlockAnnounceMessageDecoder)
 	nodeA.host.registerStreamHandler("", handlerA.handleStream)
 
@@ -57,7 +55,6 @@ func TestGossip(t *testing.T) {
 	}
 
 	nodeB := createTestService(t, configB)
-	defer nodeB.Stop()
 	handlerB := newTestStreamHandler(testBlockAnnounceMessageDecoder)
 	nodeB.host.registerStreamHandler("", handlerB.handleStream)
 
@@ -82,7 +79,6 @@ func TestGossip(t *testing.T) {
 	}
 
 	nodeC := createTestService(t, configC)
-	defer nodeC.Stop()
 	handlerC := newTestStreamHandler(testBlockAnnounceMessageDecoder)
 	nodeC.host.registerStreamHandler("", handlerC.handleStream)
 
@@ -105,7 +101,7 @@ func TestGossip(t *testing.T) {
 	}
 	require.NoError(t, err)
 
-	err = nodeA.host.send(addrInfosB[0].ID, "", testBlockAnnounceMessage)
+	_, err = nodeA.host.send(addrInfosB[0].ID, "", testBlockAnnounceMessage)
 	require.NoError(t, err)
 
 	time.Sleep(TestMessageTimeout)

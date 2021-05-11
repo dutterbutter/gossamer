@@ -19,8 +19,9 @@ package dot
 import (
 	"encoding/json"
 
+	"github.com/ChainSafe/gossamer/chain/dev"
 	"github.com/ChainSafe/gossamer/chain/gssmr"
-	"github.com/ChainSafe/gossamer/chain/ksmcc"
+	"github.com/ChainSafe/gossamer/chain/kusama"
 	"github.com/ChainSafe/gossamer/chain/polkadot"
 	"github.com/ChainSafe/gossamer/dot/types"
 	log "github.com/ChainSafe/log15"
@@ -44,10 +45,13 @@ type Config struct {
 
 // GlobalConfig is used for every node command
 type GlobalConfig struct {
-	Name     string
-	ID       string
-	BasePath string
-	LogLvl   log.Lvl
+	Name           string
+	ID             string
+	BasePath       string
+	LogLvl         log.Lvl
+	PublishMetrics bool
+	MetricsPort    uint32
+	NoTelemetry    bool
 }
 
 // LogConfig represents the log levels for individual packages
@@ -64,7 +68,7 @@ type LogConfig struct {
 
 // InitConfig is the configuration for the node initialization
 type InitConfig struct {
-	GenesisRaw string
+	Genesis string
 }
 
 // AccountConfig is to marshal/unmarshal account config vars
@@ -75,25 +79,24 @@ type AccountConfig struct {
 
 // NetworkConfig is to marshal/unmarshal toml network config vars
 type NetworkConfig struct {
-	Port        uint32
-	Bootnodes   []string
-	ProtocolID  string
-	NoBootstrap bool
-	NoMDNS      bool
-	MinPeers    int
-	MaxPeers    int
+	Port            uint32
+	Bootnodes       []string
+	ProtocolID      string
+	NoBootstrap     bool
+	NoMDNS          bool
+	MinPeers        int
+	MaxPeers        int
+	PersistentPeers []string
 }
 
 // CoreConfig is to marshal/unmarshal toml core config vars
 type CoreConfig struct {
-	Roles                    byte
-	BabeAuthority            bool
-	GrandpaAuthority         bool
-	BabeThresholdNumerator   uint64
-	BabeThresholdDenominator uint64
-	SlotDuration             uint64
-	EpochLength              uint64
-	WasmInterpreter          string
+	Roles            byte
+	BabeAuthority    bool
+	GrandpaAuthority bool
+	SlotDuration     uint64
+	EpochLength      uint64
+	WasmInterpreter  string
 }
 
 // RPCConfig is to marshal/unmarshal toml RPC config vars
@@ -128,10 +131,11 @@ func networkServiceEnabled(cfg *Config) bool {
 func GssmrConfig() *Config {
 	return &Config{
 		Global: GlobalConfig{
-			Name:     gssmr.DefaultName,
-			ID:       gssmr.DefaultID,
-			BasePath: gssmr.DefaultBasePath,
-			LogLvl:   gssmr.DefaultLvl,
+			Name:        gssmr.DefaultName,
+			ID:          gssmr.DefaultID,
+			BasePath:    gssmr.DefaultBasePath,
+			LogLvl:      gssmr.DefaultLvl,
+			MetricsPort: gssmr.DefaultMetricsPort,
 		},
 		Log: LogConfig{
 			CoreLvl:           gssmr.DefaultLvl,
@@ -144,7 +148,7 @@ func GssmrConfig() *Config {
 			FinalityGadgetLvl: gssmr.DefaultLvl,
 		},
 		Init: InitConfig{
-			GenesisRaw: gssmr.DefaultGenesisRaw,
+			Genesis: gssmr.DefaultGenesis,
 		},
 		Account: AccountConfig{
 			Key:    gssmr.DefaultKey,
@@ -171,47 +175,48 @@ func GssmrConfig() *Config {
 	}
 }
 
-// KsmccConfig returns a "ksmcc" node configuration
-func KsmccConfig() *Config {
+// KusamaConfig returns a kusama node configuration
+func KusamaConfig() *Config {
 	return &Config{
 		Global: GlobalConfig{
-			Name:     ksmcc.DefaultName,
-			ID:       ksmcc.DefaultID,
-			BasePath: ksmcc.DefaultBasePath,
-			LogLvl:   ksmcc.DefaultLvl,
+			Name:        kusama.DefaultName,
+			ID:          kusama.DefaultID,
+			BasePath:    kusama.DefaultBasePath,
+			LogLvl:      kusama.DefaultLvl,
+			MetricsPort: kusama.DefaultMetricsPort,
 		},
 		Log: LogConfig{
-			CoreLvl:           ksmcc.DefaultLvl,
-			SyncLvl:           ksmcc.DefaultLvl,
-			NetworkLvl:        ksmcc.DefaultLvl,
-			RPCLvl:            ksmcc.DefaultLvl,
-			StateLvl:          ksmcc.DefaultLvl,
-			RuntimeLvl:        ksmcc.DefaultLvl,
-			BlockProducerLvl:  ksmcc.DefaultLvl,
-			FinalityGadgetLvl: ksmcc.DefaultLvl,
+			CoreLvl:           kusama.DefaultLvl,
+			SyncLvl:           kusama.DefaultLvl,
+			NetworkLvl:        kusama.DefaultLvl,
+			RPCLvl:            kusama.DefaultLvl,
+			StateLvl:          kusama.DefaultLvl,
+			RuntimeLvl:        kusama.DefaultLvl,
+			BlockProducerLvl:  kusama.DefaultLvl,
+			FinalityGadgetLvl: kusama.DefaultLvl,
 		},
 		Init: InitConfig{
-			GenesisRaw: ksmcc.DefaultGenesisRaw,
+			Genesis: kusama.DefaultGenesis,
 		},
 		Account: AccountConfig{
-			Key:    ksmcc.DefaultKey,
-			Unlock: ksmcc.DefaultUnlock,
+			Key:    kusama.DefaultKey,
+			Unlock: kusama.DefaultUnlock,
 		},
 		Core: CoreConfig{
-			Roles:           ksmcc.DefaultRoles,
-			WasmInterpreter: ksmcc.DefaultWasmInterpreter,
+			Roles:           kusama.DefaultRoles,
+			WasmInterpreter: kusama.DefaultWasmInterpreter,
 		},
 		Network: NetworkConfig{
-			Port:        ksmcc.DefaultNetworkPort,
-			Bootnodes:   ksmcc.DefaultNetworkBootnodes,
-			NoBootstrap: ksmcc.DefaultNoBootstrap,
-			NoMDNS:      ksmcc.DefaultNoMDNS,
+			Port:        kusama.DefaultNetworkPort,
+			Bootnodes:   kusama.DefaultNetworkBootnodes,
+			NoBootstrap: kusama.DefaultNoBootstrap,
+			NoMDNS:      kusama.DefaultNoMDNS,
 		},
 		RPC: RPCConfig{
-			Port:    ksmcc.DefaultRPCHTTPPort,
-			Host:    ksmcc.DefaultRPCHTTPHost,
-			Modules: ksmcc.DefaultRPCModules,
-			WSPort:  ksmcc.DefaultRPCWSPort,
+			Port:    kusama.DefaultRPCHTTPPort,
+			Host:    kusama.DefaultRPCHTTPHost,
+			Modules: kusama.DefaultRPCModules,
+			WSPort:  kusama.DefaultRPCWSPort,
 		},
 	}
 }
@@ -236,7 +241,7 @@ func PolkadotConfig() *Config {
 			FinalityGadgetLvl: polkadot.DefaultLvl,
 		},
 		Init: InitConfig{
-			GenesisRaw: polkadot.DefaultGenesisRaw,
+			Genesis: polkadot.DefaultGenesis,
 		},
 		Account: AccountConfig{
 			Key:    polkadot.DefaultKey,
@@ -257,6 +262,56 @@ func PolkadotConfig() *Config {
 			Host:    polkadot.DefaultRPCHTTPHost,
 			Modules: polkadot.DefaultRPCModules,
 			WSPort:  polkadot.DefaultRPCWSPort,
+		},
+	}
+}
+
+// DevConfig returns the configuration for a development chain
+func DevConfig() *Config {
+	return &Config{
+		Global: GlobalConfig{
+			Name:        dev.DefaultName,
+			ID:          dev.DefaultID,
+			BasePath:    dev.DefaultBasePath,
+			LogLvl:      dev.DefaultLvl,
+			MetricsPort: dev.DefaultMetricsPort,
+		},
+		Log: LogConfig{
+			CoreLvl:           dev.DefaultLvl,
+			SyncLvl:           dev.DefaultLvl,
+			NetworkLvl:        dev.DefaultLvl,
+			RPCLvl:            dev.DefaultLvl,
+			StateLvl:          dev.DefaultLvl,
+			RuntimeLvl:        dev.DefaultLvl,
+			BlockProducerLvl:  dev.DefaultLvl,
+			FinalityGadgetLvl: dev.DefaultLvl,
+		},
+		Init: InitConfig{
+			Genesis: dev.DefaultGenesis,
+		},
+		Account: AccountConfig{
+			Key:    dev.DefaultKey,
+			Unlock: dev.DefaultUnlock,
+		},
+		Core: CoreConfig{
+			Roles:            dev.DefaultRoles,
+			BabeAuthority:    dev.DefaultBabeAuthority,
+			GrandpaAuthority: dev.DefaultGrandpaAuthority,
+			WasmInterpreter:  dev.DefaultWasmInterpreter,
+		},
+		Network: NetworkConfig{
+			Port:        dev.DefaultNetworkPort,
+			Bootnodes:   dev.DefaultNetworkBootnodes,
+			NoBootstrap: dev.DefaultNoBootstrap,
+			NoMDNS:      dev.DefaultNoMDNS,
+		},
+		RPC: RPCConfig{
+			Port:    dev.DefaultRPCHTTPPort,
+			Host:    dev.DefaultRPCHTTPHost,
+			Modules: dev.DefaultRPCModules,
+			WSPort:  dev.DefaultRPCWSPort,
+			Enabled: dev.DefaultRPCEnabled,
+			WS:      dev.DefaultWSEnabled,
 		},
 	}
 }

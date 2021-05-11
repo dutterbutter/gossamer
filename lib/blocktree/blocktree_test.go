@@ -18,7 +18,6 @@ package blocktree
 
 import (
 	"bytes"
-	"io"
 	"math/big"
 	"reflect"
 	"testing"
@@ -26,6 +25,7 @@ import (
 	database "github.com/ChainSafe/chaindb"
 	"github.com/ChainSafe/gossamer/dot/types"
 	"github.com/ChainSafe/gossamer/lib/common"
+	"github.com/ChainSafe/gossamer/lib/utils"
 
 	"github.com/stretchr/testify/require"
 )
@@ -34,32 +34,6 @@ var zeroHash, _ = common.HexToHash("0x00")
 var testHeader = &types.Header{
 	ParentHash: zeroHash,
 	Number:     big.NewInt(0),
-}
-
-type mockDigestItem struct {
-	i int
-}
-
-func newMockDigestItem(i int) *mockDigestItem {
-	return &mockDigestItem{
-		i: i,
-	}
-}
-
-func (d *mockDigestItem) String() string {
-	return ""
-}
-
-func (d *mockDigestItem) Type() byte {
-	return byte(d.i)
-}
-
-func (d *mockDigestItem) Encode() ([]byte, error) {
-	return []byte{byte(d.i)}, nil
-}
-
-func (d *mockDigestItem) Decode(_ io.Reader) error {
-	return nil
 }
 
 func newBlockTreeFromNode(head *node, db database.Database) *BlockTree {
@@ -78,18 +52,15 @@ func createFlatTree(t *testing.T, depth int) (*BlockTree, []common.Hash) {
 
 	hashes := []common.Hash{bt.head.hash}
 	for i := 1; i <= depth; i++ {
-		block := &types.Block{
-			Header: &types.Header{
-				ParentHash: previousHash,
-				Number:     big.NewInt(int64(i)),
-			},
-			Body: &types.Body{},
+		header := &types.Header{
+			ParentHash: previousHash,
+			Number:     big.NewInt(int64(i)),
 		}
 
-		hash := block.Header.Hash()
+		hash := header.Hash()
 		hashes = append(hashes, hash)
 
-		err := bt.AddBlock(block, 0)
+		err := bt.AddBlock(header, 0)
 		require.Nil(t, err)
 		previousHash = hash
 	}
@@ -132,16 +103,13 @@ func TestBlockTree_GetBlock(t *testing.T) {
 func TestBlockTree_AddBlock(t *testing.T) {
 	bt, hashes := createFlatTree(t, 1)
 
-	block := &types.Block{
-		Header: &types.Header{
-			ParentHash: hashes[1],
-			Number:     big.NewInt(1),
-		},
-		Body: &types.Body{},
+	header := &types.Header{
+		ParentHash: hashes[1],
+		Number:     big.NewInt(1),
 	}
 
-	hash := block.Header.Hash()
-	err := bt.AddBlock(block, 0)
+	hash := header.Hash()
+	err := bt.AddBlock(header, 0)
 	require.Nil(t, err)
 
 	node := bt.getNode(hash)
@@ -177,16 +145,13 @@ func TestBlockTree_LongestPath(t *testing.T) {
 	bt, hashes := createFlatTree(t, 3)
 
 	// Insert a block to create a competing path
-	extraBlock := &types.Block{
-		Header: &types.Header{
-			ParentHash: hashes[0],
-			Number:     big.NewInt(1),
-		},
-		Body: &types.Body{},
+	header := &types.Header{
+		ParentHash: hashes[0],
+		Number:     big.NewInt(1),
 	}
 
-	extraBlock.Header.Hash()
-	err := bt.AddBlock(extraBlock, 0)
+	header.Hash()
+	err := bt.AddBlock(header, 0)
 	require.NotNil(t, err)
 
 	longestPath := bt.longestPath()
@@ -203,15 +168,12 @@ func TestBlockTree_Subchain(t *testing.T) {
 	expectedPath := hashes[1:]
 
 	// Insert a block to create a competing path
-	extraBlock := &types.Block{
-		Header: &types.Header{
-			ParentHash: hashes[0],
-			Number:     big.NewInt(1),
-		},
-		Body: &types.Body{},
+	extraBlock := &types.Header{
+		ParentHash: hashes[0],
+		Number:     big.NewInt(1),
 	}
 
-	extraBlock.Header.Hash()
+	extraBlock.Hash()
 	err := bt.AddBlock(extraBlock, 0)
 	require.NotNil(t, err)
 
@@ -256,16 +218,13 @@ func TestBlockTree_GetNode(t *testing.T) {
 	bt, branches := createTestBlockTree(testHeader, 16, nil)
 
 	for _, branch := range branches {
-		block := &types.Block{
-			Header: &types.Header{
-				ParentHash: branch.hash,
-				Number:     branch.depth,
-				StateRoot:  Hash{0x1},
-			},
-			Body: &types.Body{},
+		header := &types.Header{
+			ParentHash: branch.hash,
+			Number:     branch.depth,
+			StateRoot:  Hash{0x1},
 		}
 
-		err := bt.AddBlock(block, 0)
+		err := bt.AddBlock(header, 0)
 		require.Nil(t, err)
 	}
 }
@@ -291,17 +250,14 @@ func TestBlockTree_GetAllBlocksAtDepth(t *testing.T) {
 	previousHash := btHashes[4]
 
 	for i := 4; i <= btDepth; i++ {
-		block := &types.Block{
-			Header: &types.Header{
-				ParentHash: previousHash,
-				Number:     big.NewInt(int64(i)),
-				Digest:     types.Digest{newMockDigestItem(9)},
-			},
-			Body: &types.Body{},
+		header := &types.Header{
+			ParentHash: previousHash,
+			Number:     big.NewInt(int64(i)),
+			Digest:     types.Digest{utils.NewMockDigestItem(9)},
 		}
 
-		hash := block.Header.Hash()
-		bt.AddBlock(block, 0)
+		hash := header.Hash()
+		bt.AddBlock(header, 0)
 		previousHash = hash
 
 		if i == desiredDepth-1 {
@@ -313,17 +269,14 @@ func TestBlockTree_GetAllBlocksAtDepth(t *testing.T) {
 	previousHash = btHashes[2]
 
 	for i := 2; i <= btDepth; i++ {
-		block := &types.Block{
-			Header: &types.Header{
-				ParentHash: previousHash,
-				Number:     big.NewInt(int64(i)),
-				Digest:     types.Digest{newMockDigestItem(7)},
-			},
-			Body: &types.Body{},
+		header := &types.Header{
+			ParentHash: previousHash,
+			Number:     big.NewInt(int64(i)),
+			Digest:     types.Digest{utils.NewMockDigestItem(7)},
 		}
 
-		hash := block.Header.Hash()
-		bt.AddBlock(block, 0)
+		hash := header.Hash()
+		bt.AddBlock(header, 0)
 		previousHash = hash
 
 		if i == desiredDepth-1 {
@@ -411,18 +364,18 @@ func TestBlockTree_Prune(t *testing.T) {
 
 	copy := bt.DeepCopy()
 
-	// pick some block to finalize
-	finalized := bt.head.children[0].children[0].children[0]
-	pruned := bt.Prune(finalized.hash)
+	// pick some block to finalise
+	finalised := bt.head.children[0].children[0].children[0]
+	pruned := bt.Prune(finalised.hash)
 
 	for _, prunedHash := range pruned {
 		prunedNode := copy.getNode(prunedHash)
-		if prunedNode.isDescendantOf(finalized) {
-			t.Fatal("pruned node that's descendant of finalized node!!")
+		if prunedNode.isDescendantOf(finalised) {
+			t.Fatal("pruned node that's descendant of finalised node!!")
 		}
 
-		if finalized.isDescendantOf(prunedNode) {
-			t.Fatal("pruned an ancestor of the finalized node!!")
+		if finalised.isDescendantOf(prunedNode) {
+			t.Fatal("pruned an ancestor of the finalised node!!")
 		}
 	}
 }

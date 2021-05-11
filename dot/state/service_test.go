@@ -28,18 +28,19 @@ import (
 	"github.com/ChainSafe/gossamer/lib/trie"
 	"github.com/ChainSafe/gossamer/lib/utils"
 
+	"github.com/ChainSafe/chaindb"
 	log "github.com/ChainSafe/log15"
 	"github.com/stretchr/testify/require"
 )
 
 func newTestGenesisWithTrieAndHeader(t *testing.T) (*genesis.Genesis, *trie.Trie, *types.Header) {
-	gen, err := genesis.NewGenesisFromJSONRaw("../../chain/gssmr/genesis-raw.json")
+	gen, err := genesis.NewGenesisFromJSONRaw("../../chain/gssmr/genesis.json")
 	require.NoError(t, err)
 
 	genTrie, err := genesis.NewTrieFromGenesis(gen)
 	require.NoError(t, err)
 
-	genesisHeader, err := types.NewHeader(common.NewHash([]byte{0}), big.NewInt(0), genTrie.MustHash(), trie.EmptyHash, types.Digest{})
+	genesisHeader, err := types.NewHeader(common.NewHash([]byte{0}), genTrie.MustHash(), trie.EmptyHash, big.NewInt(0), types.Digest{})
 	require.NoError(t, err)
 	return gen, genTrie, genesisHeader
 }
@@ -63,7 +64,7 @@ func TestService_Start(t *testing.T) {
 	defer utils.RemoveTestDir(t)
 
 	genData, genTrie, genesisHeader := newTestGenesisWithTrieAndHeader(t)
-	err := state.Initialize(genData, genesisHeader, genTrie)
+	err := state.Initialise(genData, genesisHeader, genTrie)
 	require.NoError(t, err)
 
 	err = state.Start()
@@ -73,18 +74,18 @@ func TestService_Start(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestService_Initialize(t *testing.T) {
+func TestService_Initialise(t *testing.T) {
 	state := newTestService(t)
 	defer utils.RemoveTestDir(t)
 
 	genData, genTrie, genesisHeader := newTestGenesisWithTrieAndHeader(t)
-	err := state.Initialize(genData, genesisHeader, genTrie)
+	err := state.Initialise(genData, genesisHeader, genTrie)
 	require.NoError(t, err)
 
-	genesisHeader, err = types.NewHeader(common.NewHash([]byte{77}), big.NewInt(0), genTrie.MustHash(), trie.EmptyHash, types.Digest{})
+	genesisHeader, err = types.NewHeader(common.NewHash([]byte{77}), genTrie.MustHash(), trie.EmptyHash, big.NewInt(0), types.Digest{})
 	require.NoError(t, err)
 
-	err = state.Initialize(genData, genesisHeader, genTrie)
+	err = state.Initialise(genData, genesisHeader, genTrie)
 	require.NoError(t, err)
 
 	err = state.Start()
@@ -99,7 +100,7 @@ func TestMemDB_Start(t *testing.T) {
 	state := newTestMemDBService()
 
 	genData, genTrie, genesisHeader := newTestGenesisWithTrieAndHeader(t)
-	err := state.Initialize(genData, genesisHeader, genTrie)
+	err := state.Initialise(genData, genesisHeader, genTrie)
 	require.NoError(t, err)
 
 	err = state.Start()
@@ -118,7 +119,7 @@ func TestService_BlockTree(t *testing.T) {
 	stateA := NewService(testDir, log.LvlTrace)
 
 	genData, genTrie, genesisHeader := newTestGenesisWithTrieAndHeader(t)
-	err := stateA.Initialize(genData, genesisHeader, genTrie)
+	err := stateA.Initialise(genData, genesisHeader, genTrie)
 	require.NoError(t, err)
 
 	err = stateA.Start()
@@ -148,7 +149,7 @@ func TestService_PruneStorage(t *testing.T) {
 	serv.UseMemDB()
 
 	genData, genTrie, genesisHeader := newTestGenesisWithTrieAndHeader(t)
-	err := serv.Initialize(genData, genesisHeader, genTrie)
+	err := serv.Initialise(genData, genesisHeader, genTrie)
 	require.NoError(t, err)
 
 	err = serv.Start()
@@ -171,13 +172,13 @@ func TestService_PruneStorage(t *testing.T) {
 		err = serv.Storage.StoreTrie(trieState)
 		require.NoError(t, err)
 
-		// Only finalize a block at height 3
+		// Only finalise a block at height 3
 		if i == 2 {
 			toFinalize = block.Header.Hash()
 		}
 	}
 
-	// add some blocks to prune, on a different chain from the finalized block
+	// add some blocks to prune, on a different chain from the finalised block
 	prunedArr := []prunedBlock{}
 	parentHash := serv.Block.GenesisHash()
 	for i := 0; i < 3; i++ {
@@ -202,7 +203,7 @@ func TestService_PruneStorage(t *testing.T) {
 		parentHash = block.Header.Hash()
 	}
 
-	// finalize a block
+	// finalise a block
 	serv.Block.SetFinalizedHash(toFinalize, 0, 0)
 
 	time.Sleep(1 * time.Second)
@@ -223,10 +224,22 @@ func TestService_Rewind(t *testing.T) {
 	serv.UseMemDB()
 
 	genData, genTrie, genesisHeader := newTestGenesisWithTrieAndHeader(t)
-	err := serv.Initialize(genData, genesisHeader, genTrie)
+	err := serv.Initialise(genData, genesisHeader, genTrie)
 	require.NoError(t, err)
 
 	err = serv.Start()
+	require.NoError(t, err)
+
+	err = serv.Grandpa.setCurrentSetID(3)
+	require.NoError(t, err)
+
+	err = serv.Grandpa.setSetIDChangeAtBlock(1, big.NewInt(5))
+	require.NoError(t, err)
+
+	err = serv.Grandpa.setSetIDChangeAtBlock(2, big.NewInt(8))
+	require.NoError(t, err)
+
+	err = serv.Grandpa.setSetIDChangeAtBlock(3, big.NewInt(10))
 	require.NoError(t, err)
 
 	AddBlocksToState(t, serv.Block, 12)
@@ -236,4 +249,74 @@ func TestService_Rewind(t *testing.T) {
 	num, err := serv.Block.BestBlockNumber()
 	require.NoError(t, err)
 	require.Equal(t, big.NewInt(6), num)
+
+	setID, err := serv.Grandpa.GetCurrentSetID()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), setID)
+
+	_, err = serv.Grandpa.GetSetIDChange(1)
+	require.NoError(t, err)
+
+	_, err = serv.Grandpa.GetSetIDChange(2)
+	require.Equal(t, chaindb.ErrKeyNotFound, err)
+
+	_, err = serv.Grandpa.GetSetIDChange(3)
+	require.Equal(t, chaindb.ErrKeyNotFound, err)
+}
+
+func TestService_Import(t *testing.T) {
+	testDir := utils.NewTestDir(t)
+	defer utils.RemoveTestDir(t)
+
+	serv := NewService(testDir, log.LvlTrace)
+	serv.UseMemDB()
+
+	genData, genTrie, genesisHeader := newTestGenesisWithTrieAndHeader(t)
+	err := serv.Initialise(genData, genesisHeader, genTrie)
+	require.NoError(t, err)
+	err = serv.db.Close()
+	require.NoError(t, err)
+
+	tr := trie.NewEmptyTrie()
+	var testCases = []string{
+		"asdf",
+		"ghjk",
+		"qwerty",
+		"uiopl",
+		"zxcv",
+		"bnm",
+	}
+	for _, tc := range testCases {
+		tr.Put([]byte(tc), []byte(tc))
+	}
+
+	header := &types.Header{
+		Number:    big.NewInt(77),
+		StateRoot: tr.MustHash(),
+		Digest:    types.Digest{types.NewBabeSecondaryPlainPreDigest(0, 177).ToPreRuntimeDigest()},
+	}
+
+	firstSlot := uint64(100)
+
+	err = serv.Import(header, tr, firstSlot)
+	require.NoError(t, err)
+
+	err = serv.Start()
+	require.NoError(t, err)
+
+	bestBlockHeader, err := serv.Block.BestBlockHeader()
+	require.NoError(t, err)
+	require.Equal(t, header, bestBlockHeader)
+
+	root, err := serv.Storage.StorageRoot()
+	require.NoError(t, err)
+	require.Equal(t, header.StateRoot, root)
+
+	require.Equal(t, firstSlot, serv.Epoch.firstSlot)
+	skip, err := serv.Epoch.SkipVerify(header)
+	require.NoError(t, err)
+	require.True(t, skip)
+
+	err = serv.Stop()
+	require.NoError(t, err)
 }

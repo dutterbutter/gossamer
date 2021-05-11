@@ -58,10 +58,6 @@ type Service struct {
 	blockProducer   BlockProducer
 	isBlockProducer bool
 
-	// Finality gadget variables
-	finalityGadget      FinalityGadget
-	isFinalityAuthority bool
-
 	// Block verification
 	verifier Verifier
 
@@ -81,19 +77,17 @@ type Service struct {
 
 // Config holds the configuration for the core Service.
 type Config struct {
-	LogLvl              log.Lvl
-	BlockState          BlockState
-	EpochState          EpochState
-	StorageState        StorageState
-	TransactionState    TransactionState
-	Network             Network
-	Keystore            *keystore.GlobalKeystore
-	Runtime             runtime.Instance
-	BlockProducer       BlockProducer
-	IsBlockProducer     bool
-	FinalityGadget      FinalityGadget
-	IsFinalityAuthority bool
-	Verifier            Verifier
+	LogLvl           log.Lvl
+	BlockState       BlockState
+	EpochState       EpochState
+	StorageState     StorageState
+	TransactionState TransactionState
+	Network          Network
+	Keystore         *keystore.GlobalKeystore
+	Runtime          runtime.Instance
+	BlockProducer    BlockProducer
+	IsBlockProducer  bool
+	Verifier         Verifier
 
 	NewBlocks chan types.Block // only used for testing purposes
 }
@@ -121,10 +115,6 @@ func NewService(cfg *Config) (*Service, error) {
 		return nil, ErrNilBlockProducer
 	}
 
-	if cfg.IsFinalityAuthority && cfg.FinalityGadget == nil {
-		return nil, ErrNilFinalityGadget
-	}
-
 	h := log.StreamHandler(os.Stdout, log.TerminalFormat())
 	h = log.CallerFileHandler(h)
 	logger.SetHandler(log.LvlFilterHandler(cfg.LogLvl, h))
@@ -148,25 +138,23 @@ func NewService(cfg *Config) (*Service, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	srv := &Service{
-		ctx:                 ctx,
-		cancel:              cancel,
-		rt:                  cfg.Runtime,
-		codeHash:            codeHash,
-		keys:                cfg.Keystore,
-		blkRec:              cfg.NewBlocks,
-		blockState:          cfg.BlockState,
-		epochState:          cfg.EpochState,
-		storageState:        cfg.StorageState,
-		transactionState:    cfg.TransactionState,
-		net:                 cfg.Network,
-		isBlockProducer:     cfg.IsBlockProducer,
-		blockProducer:       cfg.BlockProducer,
-		finalityGadget:      cfg.FinalityGadget,
-		verifier:            cfg.Verifier,
-		isFinalityAuthority: cfg.IsFinalityAuthority,
-		lock:                &sync.Mutex{},
-		blockAddCh:          blockAddCh,
-		blockAddChID:        id,
+		ctx:              ctx,
+		cancel:           cancel,
+		rt:               cfg.Runtime,
+		codeHash:         codeHash,
+		keys:             cfg.Keystore,
+		blkRec:           cfg.NewBlocks,
+		blockState:       cfg.BlockState,
+		epochState:       cfg.EpochState,
+		storageState:     cfg.StorageState,
+		transactionState: cfg.TransactionState,
+		net:              cfg.Network,
+		isBlockProducer:  cfg.IsBlockProducer,
+		blockProducer:    cfg.BlockProducer,
+		verifier:         cfg.Verifier,
+		lock:             &sync.Mutex{},
+		blockAddCh:       blockAddCh,
+		blockAddChID:     id,
 	}
 
 	if cfg.NewBlocks != nil {
@@ -309,6 +297,7 @@ func (s *Service) handleReceivedBlock(block *types.Block) (err error) {
 		StateRoot:      block.Header.StateRoot,
 		ExtrinsicsRoot: block.Header.ExtrinsicsRoot,
 		Digest:         block.Header.Digest,
+		BestBlock:      true,
 	}
 
 	if s.net == nil {
@@ -420,7 +409,7 @@ func (s *Service) InsertKey(kp crypto.Keypair) {
 
 // HasKey returns true if given hex encoded public key string is found in keystore, false otherwise, error if there
 //  are issues decoding string
-func (s *Service) HasKey(pubKeyStr string, keyType string) (bool, error) {
+func (s *Service) HasKey(pubKeyStr, keyType string) (bool, error) {
 	return keystore.HasKey(pubKeyStr, keyType, s.keys.Acco)
 }
 
@@ -456,6 +445,20 @@ func (s *Service) HandleSubmittedExtrinsic(ext types.Extrinsic) error {
 		return nil
 	}
 
+	// the transaction source is External
+	// validate the transaction
+	txv, err := s.rt.ValidateTransaction(append([]byte{byte(types.TxnExternal)}, ext...))
+	if err != nil {
+		return err
+	}
+
+	if s.isBlockProducer {
+		// add transaction to pool
+		vtx := transaction.NewValidTransaction(ext, txv)
+		s.transactionState.AddToPool(vtx)
+	}
+
+	// broadcast transaction
 	msg := &network.TransactionMessage{Extrinsics: []types.Extrinsic{ext}}
 	s.net.SendMessage(msg)
 	return nil

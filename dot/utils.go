@@ -17,11 +17,14 @@
 package dot
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	ctoml "github.com/ChainSafe/gossamer/dot/config/toml"
@@ -30,6 +33,7 @@ import (
 	"github.com/ChainSafe/gossamer/lib/runtime/wasmer"
 	"github.com/ChainSafe/gossamer/lib/utils"
 	log "github.com/ChainSafe/log15"
+	"github.com/cosmos/go-bip39"
 	"github.com/naoina/toml"
 	"github.com/stretchr/testify/require"
 )
@@ -57,7 +61,7 @@ func NewTestGenesis(t *testing.T) *genesis.Genesis {
 	}
 }
 
-// NewTestGenesisRawFile returns a test genesis-raw file using "gssmr" raw data
+// NewTestGenesisRawFile returns a test genesis file using "gssmr" raw data
 func NewTestGenesisRawFile(t *testing.T, cfg *Config) *os.File {
 	dir := utils.NewTestDir(t)
 
@@ -234,4 +238,14 @@ func CreateJSONRawFile(bs *BuildSpec, fp string) *os.File {
 		os.Exit(1)
 	}
 	return WriteConfig(data, fp)
+}
+
+// RandomNodeName generate a new random name
+// if there is no name configured to the node
+func RandomNodeName() string {
+	entropy, _ := bip39.NewEntropy(128)
+	randomNamesString, _ := bip39.NewMnemonic(entropy)
+	randomNames := strings.Split(randomNamesString, " ")
+	number := binary.BigEndian.Uint16(entropy)
+	return randomNames[0] + "-" + randomNames[1] + "-" + fmt.Sprint(number)
 }

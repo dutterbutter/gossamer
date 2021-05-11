@@ -214,7 +214,7 @@ func TestEncodeBlockAnnounceMessage(t *testing.T) {
 	//	Digest: []byte
 
 	//                                    mtparenthash                                                      bnstateroot                                                       extrinsicsroot                                                di
-	expected, err := common.HexToBytes("0x454545454545454545454545454545454545454545454545454545454545454504b3266de137d20a5d0ff3a6401eb57127525fd9b2693701f0bf5a8a853fa3ebe003170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c11131400")
+	expected, err := common.HexToBytes("0x454545454545454545454545454545454545454545454545454545454545454504b3266de137d20a5d0ff3a6401eb57127525fd9b2693701f0bf5a8a853fa3ebe003170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c1113140000")
 	require.Nil(t, err)
 
 	parentHash, err := common.HexToHash("0x4545454545454545454545454545454545454545454545454545454545454545")
@@ -241,7 +241,7 @@ func TestEncodeBlockAnnounceMessage(t *testing.T) {
 }
 
 func TestDecode_BlockAnnounceMessage(t *testing.T) {
-	announceMessage, err := common.HexToBytes("0x454545454545454545454545454545454545454545454545454545454545454504b3266de137d20a5d0ff3a6401eb57127525fd9b2693701f0bf5a8a853fa3ebe003170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c11131400")
+	announceMessage, err := common.HexToBytes("0x454545454545454545454545454545454545454545454545454545454545454504b3266de137d20a5d0ff3a6401eb57127525fd9b2693701f0bf5a8a853fa3ebe003170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c1113140000")
 	require.Nil(t, err)
 
 	bhm := new(BlockAnnounceMessage)
@@ -340,12 +340,8 @@ func TestDecodeTransactionMessageTwoExtrinsics(t *testing.T) {
 }
 
 func TestDecodeConsensusMessage(t *testing.T) {
-	ConsensusEngineID := types.BabeEngineID
-
-	testID := hex.EncodeToString(types.BabeEngineID.ToBytes())
 	testData := "03100405"
-
-	msg := "0x" + testID + testData // 0x4241424503100405
+	msg := "0x" + testData
 
 	encMsg, err := common.HexToBytes(msg)
 	require.Nil(t, err)
@@ -358,8 +354,7 @@ func TestDecodeConsensusMessage(t *testing.T) {
 	require.Nil(t, err)
 
 	expected := &ConsensusMessage{
-		ConsensusEngineID: ConsensusEngineID,
-		Data:              out,
+		Data: out,
 	}
 
 	require.Equal(t, expected, m)

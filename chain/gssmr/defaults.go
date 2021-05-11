@@ -33,13 +33,16 @@ var (
 	// DefaultBasePath Default node base directory path
 	DefaultBasePath = string("~/.gossamer/gssmr")
 
+	// DefaultMetricsPort is the metrics server port
+	DefaultMetricsPort = uint32(9876)
+
 	// DefaultLvl is the default log level
 	DefaultLvl = log.LvlInfo
 
 	// InitConfig
 
-	// DefaultGenesisRaw Default genesis configuration path
-	DefaultGenesisRaw = string("./chain/gssmr/genesis-raw.json")
+	// DefaultGenesis is the default genesis configuration path
+	DefaultGenesis = string("./chain/gssmr/genesis.json")
 
 	// AccountConfig
 

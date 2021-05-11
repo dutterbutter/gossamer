@@ -34,6 +34,7 @@ var (
 	firstSlotKey     = []byte("firstslot")
 	epochDataPrefix  = []byte("epochinfo")
 	configDataPrefix = []byte("configinfo")
+	skipToKey        = []byte("skipto")
 )
 
 func epochDataKey(epoch uint64) []byte {
@@ -50,15 +51,18 @@ func configDataKey(epoch uint64) []byte {
 
 // EpochState tracks information related to each epoch
 type EpochState struct {
-	baseDB      chaindb.Database
 	db          chaindb.Database
+	baseState   *BaseState
 	epochLength uint64 // measured in slots
 	firstSlot   uint64
+	skipToEpoch uint64
 }
 
 // NewEpochStateFromGenesis returns a new EpochState given information for the first epoch, fetched from the runtime
 func NewEpochStateFromGenesis(db chaindb.Database, genesisConfig *types.BabeConfiguration) (*EpochState, error) {
-	err := storeFirstSlot(db, 1) // this may change once the first block is imported
+	baseState := NewBaseState(db)
+
+	err := baseState.storeFirstSlot(1) // this may change once the first block is imported
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +78,7 @@ func NewEpochStateFromGenesis(db chaindb.Database, genesisConfig *types.BabeConf
 	}
 
 	s := &EpochState{
-		baseDB:      db,
+		baseState:   NewBaseState(db),
 		db:          epochDB,
 		epochLength: genesisConfig.EpochLength,
 		firstSlot:   1,
@@ -107,26 +111,38 @@ func NewEpochStateFromGenesis(db chaindb.Database, genesisConfig *types.BabeConf
 		return nil, err
 	}
 
+	if err := s.baseState.storeSkipToEpoch(0); err != nil {
+		return nil, err
+	}
+
 	return s, nil
 }
 
 // NewEpochState returns a new EpochState
 func NewEpochState(db chaindb.Database) (*EpochState, error) {
+	baseState := NewBaseState(db)
+
 	epochLength, err := loadEpochLength(db)
 	if err != nil {
 		return nil, err
 	}
 
-	firstSlot, err := loadFirstSlot(db)
+	firstSlot, err := baseState.loadFirstSlot()
+	if err != nil {
+		return nil, err
+	}
+
+	skipToEpoch, err := baseState.loadSkipToEpoch()
 	if err != nil {
 		return nil, err
 	}
 
 	return &EpochState{
-		baseDB:      db,
+		baseState:   baseState,
 		db:          chaindb.NewTable(db, epochPrefix),
 		epochLength: epochLength,
 		firstSlot:   firstSlot,
+		skipToEpoch: skipToEpoch,
 	}, nil
 }
 
@@ -138,21 +154,6 @@ func storeEpochLength(db chaindb.Database, l uint64) error {
 
 func loadEpochLength(db chaindb.Database) (uint64, error) {
 	data, err := db.Get(epochLengthKey)
-	if err != nil {
-		return 0, err
-	}
-
-	return binary.LittleEndian.Uint64(data), nil
-}
-
-func storeFirstSlot(db chaindb.Database, slot uint64) error {
-	buf := make([]byte, 8)
-	binary.LittleEndian.PutUint64(buf, slot)
-	return db.Put(firstSlotKey, buf)
-}
-
-func loadFirstSlot(db chaindb.Database) (uint64, error) {
-	data, err := db.Get(firstSlotKey)
 	if err != nil {
 		return 0, err
 	}
@@ -289,5 +290,20 @@ func (s *EpochState) GetStartSlotForEpoch(epoch uint64) (uint64, error) {
 // SetFirstSlot sets the first slot number of the network
 func (s *EpochState) SetFirstSlot(slot uint64) error {
 	s.firstSlot = slot
-	return storeFirstSlot(s.baseDB, slot)
+	return s.baseState.storeFirstSlot(slot)
+}
+
+// SkipVerify returns whether verification for the given header should be skipped or not.
+// Only used in the case of imported state.
+func (s *EpochState) SkipVerify(header *types.Header) (bool, error) {
+	epoch, err := s.GetEpochForBlock(header)
+	if err != nil {
+		return false, err
+	}
+
+	if epoch <= s.skipToEpoch {
+		return true, nil
+	}
+
+	return false, nil
 }

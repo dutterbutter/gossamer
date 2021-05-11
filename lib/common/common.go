@@ -21,10 +21,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"math/big"
 	"strconv"
 	"strings"
-
-	"github.com/OneOfOne/xxhash"
 )
 
 // ErrNoPrefix is returned when trying to convert a hex-encoded string with no 0x prefix
@@ -103,6 +102,32 @@ func MustHexToBytes(in string) []byte {
 	}
 
 	return out
+}
+
+// MustHexToBigInt turns a 0x prefixed hex string into a big.Int
+// it panic if it cannot decode the string
+func MustHexToBigInt(in string) *big.Int {
+	if len(in) < 2 {
+		panic("invalid string")
+	}
+
+	if strings.Compare(in[:2], "0x") != 0 {
+		panic(ErrNoPrefix)
+	}
+
+	in = in[2:]
+
+	// Ensure we have an even length
+	if len(in)%2 != 0 {
+		in = "0" + in
+	}
+
+	out, err := hex.DecodeString(in)
+	if err != nil {
+		panic(err)
+	}
+
+	return big.NewInt(0).SetBytes(out)
 }
 
 // BytesToHex turns a byte slice into a 0x prefixed hex string
@@ -239,30 +264,4 @@ func ReadBytes(r io.Reader, n int) ([]byte, error) {
 		return nil, err
 	}
 	return buf, nil
-}
-
-// Twox128Hash computes xxHash64 twice with seeds 0 and 1 applied on given byte array
-func Twox128Hash(msg []byte) ([]byte, error) {
-	// compute xxHash64 twice with seeds 0 and 1 applied on given byte array
-	h0 := xxhash.NewS64(0) // create xxHash with 0 seed
-	_, err := h0.Write(msg[0:])
-	if err != nil {
-		return nil, err
-	}
-	res0 := h0.Sum64()
-	hash0 := make([]byte, 8)
-	binary.LittleEndian.PutUint64(hash0, res0)
-
-	h1 := xxhash.NewS64(1) // create xxHash with 1 seed
-	_, err = h1.Write(msg[0:])
-	if err != nil {
-		return nil, err
-	}
-	res1 := h1.Sum64()
-	hash1 := make([]byte, 8)
-	binary.LittleEndian.PutUint64(hash1, res1)
-
-	//concatenated result
-	both := append(hash0, hash1...)
-	return both, nil
 }

@@ -27,6 +27,7 @@ import (
 	"github.com/ChainSafe/gossamer/dot/state"
 	"github.com/ChainSafe/gossamer/dot/types"
 	"github.com/ChainSafe/gossamer/lib/common"
+	"github.com/ChainSafe/gossamer/lib/common/optional"
 	"github.com/ChainSafe/gossamer/lib/common/variadic"
 	"github.com/ChainSafe/gossamer/lib/genesis"
 	"github.com/ChainSafe/gossamer/lib/runtime"
@@ -41,14 +42,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type mockFinalityGadget struct{}
+
+func (m mockFinalityGadget) VerifyBlockJustification(_ []byte) error {
+	return nil
+}
+
 func newTestGenesisWithTrieAndHeader(t *testing.T) (*genesis.Genesis, *trie.Trie, *types.Header) {
-	gen, err := genesis.NewGenesisFromJSONRaw("../../chain/gssmr/genesis-raw.json")
+	gen, err := genesis.NewGenesisFromJSONRaw("../../chain/gssmr/genesis.json")
 	require.NoError(t, err)
 
 	genTrie, err := genesis.NewTrieFromGenesis(gen)
 	require.NoError(t, err)
 
-	genesisHeader, err := types.NewHeader(common.NewHash([]byte{0}), big.NewInt(0), genTrie.MustHash(), trie.EmptyHash, types.Digest{})
+	genesisHeader, err := types.NewHeader(common.NewHash([]byte{0}), genTrie.MustHash(), trie.EmptyHash, big.NewInt(0), types.Digest{})
 	require.NoError(t, err)
 	return gen, genTrie, genesisHeader
 }
@@ -62,7 +69,7 @@ func newTestSyncer(t *testing.T) *Service {
 	stateSrvc.UseMemDB()
 
 	gen, genTrie, genHeader := newTestGenesisWithTrieAndHeader(t)
-	err := stateSrvc.Initialize(gen, genHeader, genTrie)
+	err := stateSrvc.Initialise(gen, genHeader, genTrie)
 	require.NoError(t, err)
 
 	err = stateSrvc.Start()
@@ -102,6 +109,10 @@ func newTestSyncer(t *testing.T) *Service {
 		cfg.LogLvl = log.LvlDebug
 	}
 
+	if cfg.FinalityGadget == nil {
+		cfg.FinalityGadget = &mockFinalityGadget{}
+	}
+
 	syncer, err := NewService(cfg)
 	require.NoError(t, err)
 	return syncer
@@ -138,12 +149,13 @@ func TestHandleBlockResponse(t *testing.T) {
 	resp, err := responder.CreateBlockResponse(req)
 	require.NoError(t, err)
 
-	err = syncer.ProcessBlockData(resp.BlockData)
+	_, err = syncer.ProcessBlockData(resp.BlockData)
 	require.NoError(t, err)
 
 	resp2, err := responder.CreateBlockResponse(req)
 	require.NoError(t, err)
-	syncer.ProcessBlockData(resp2.BlockData)
+	_, err = syncer.ProcessBlockData(resp2.BlockData)
+	require.NoError(t, err)
 	// response should contain blocks 13 to 20, and we should be synced
 	require.True(t, syncer.synced)
 }
@@ -189,7 +201,7 @@ func TestHandleBlockResponse_MissingBlocks(t *testing.T) {
 
 	// request should start from block 5 (best block number + 1)
 	syncer.synced = false
-	err = syncer.ProcessBlockData(resp.BlockData)
+	_, err = syncer.ProcessBlockData(resp.BlockData)
 	require.True(t, errors.Is(err, chaindb.ErrKeyNotFound))
 }
 
@@ -216,7 +228,7 @@ func TestRemoveIncludedExtrinsics(t *testing.T) {
 		BlockData: []*types.BlockData{bd},
 	}
 
-	err = syncer.ProcessBlockData(msg.BlockData)
+	_, err = syncer.ProcessBlockData(msg.BlockData)
 	require.NoError(t, err)
 
 	inQueue := syncer.transactionState.(*state.TransactionState).Pop()
@@ -225,7 +237,7 @@ func TestRemoveIncludedExtrinsics(t *testing.T) {
 
 func TestHandleBlockResponse_NoBlockData(t *testing.T) {
 	syncer := newTestSyncer(t)
-	err := syncer.ProcessBlockData(nil)
+	_, err := syncer.ProcessBlockData(nil)
 	require.Equal(t, ErrNilBlockData, err)
 }
 
@@ -248,7 +260,7 @@ func TestHandleBlockResponse_BlockData(t *testing.T) {
 		BlockData: bd,
 	}
 
-	err = syncer.ProcessBlockData(msg.BlockData)
+	_, err = syncer.ProcessBlockData(msg.BlockData)
 	require.Nil(t, err)
 }
 
@@ -322,10 +334,10 @@ func TestSyncer_ExecuteBlock(t *testing.T) {
 func TestSyncer_HandleRuntimeChanges(t *testing.T) {
 	syncer := newTestSyncer(t)
 
-	_, err := runtime.GetRuntimeBlob(runtime.HOST_API_TEST_RUNTIME_FP, runtime.HOST_API_TEST_RUNTIME_URL)
+	_, err := runtime.GetRuntimeBlob(runtime.POLKADOT_RUNTIME_FP, runtime.POLKADOT_RUNTIME_URL)
 	require.NoError(t, err)
 
-	testRuntime, err := ioutil.ReadFile(runtime.HOST_API_TEST_RUNTIME_FP)
+	testRuntime, err := ioutil.ReadFile(runtime.POLKADOT_RUNTIME_FP)
 	require.NoError(t, err)
 
 	ts, err := syncer.storageState.TrieState(nil)
@@ -348,6 +360,32 @@ func TestSyncer_HandleJustification(t *testing.T) {
 	syncer.handleJustification(header, just)
 
 	res, err := syncer.blockState.GetJustification(header.Hash())
+	require.NoError(t, err)
+	require.Equal(t, just, res)
+}
+
+func TestSyncer_ProcessJustification(t *testing.T) {
+	syncer := newTestSyncer(t)
+
+	parent, err := syncer.blockState.(*state.BlockState).BestBlockHeader()
+	require.NoError(t, err)
+	block := buildBlock(t, syncer.runtime, parent)
+	err = syncer.blockState.(*state.BlockState).AddBlock(block)
+	require.NoError(t, err)
+
+	just := []byte("testjustification")
+
+	data := []*types.BlockData{
+		{
+			Hash:          syncer.blockState.BestBlockHash(),
+			Justification: optional.NewBytes(true, just),
+		},
+	}
+
+	_, err = syncer.ProcessJustification(data)
+	require.NoError(t, err)
+
+	res, err := syncer.blockState.GetJustification(syncer.blockState.BestBlockHash())
 	require.NoError(t, err)
 	require.Equal(t, just, res)
 }

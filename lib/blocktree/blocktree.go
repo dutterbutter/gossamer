@@ -49,8 +49,8 @@ func NewEmptyBlockTree(db database.Database) *BlockTree {
 	}
 }
 
-// NewBlockTreeFromRoot initializes a blocktree with a root block. The root block is always the most recently
-// finalized block (ie the genesis block if the node is just starting.)
+// NewBlockTreeFromRoot initialises a blocktree with a root block. The root block is always the most recently
+// finalised block (ie the genesis block if the node is just starting.)
 func NewBlockTreeFromRoot(root *types.Header, db database.Database) *BlockTree {
 	head := &node{
 		hash:        root.Hash(),
@@ -76,17 +76,17 @@ func (bt *BlockTree) GenesisHash() Hash {
 
 // AddBlock inserts the block as child of its parent node
 // Note: Assumes block has no children
-func (bt *BlockTree) AddBlock(block *types.Block, arrivalTime uint64) error {
+func (bt *BlockTree) AddBlock(header *types.Header, arrivalTime uint64) error {
 	bt.Lock()
 	defer bt.Unlock()
 
-	parent := bt.getNode(block.Header.ParentHash)
+	parent := bt.getNode(header.ParentHash)
 	if parent == nil {
 		return ErrParentNotFound
 	}
 
 	// Check if it already exists
-	n := bt.getNode(block.Header.Hash())
+	n := bt.getNode(header.Hash())
 	if n != nil {
 		return ErrBlockExists
 	}
@@ -95,7 +95,7 @@ func (bt *BlockTree) AddBlock(block *types.Block, arrivalTime uint64) error {
 	depth.Add(parent.depth, big.NewInt(1))
 
 	n = &node{
-		hash:        block.Header.Hash(),
+		hash:        header.Hash(),
 		parent:      parent,
 		children:    []*node{},
 		depth:       depth,
@@ -172,15 +172,15 @@ func (bt *BlockTree) getNode(h Hash) *node {
 
 // Prune sets the given hash as the new blocktree root, removing all nodes that are not the new root node or its descendant
 // It returns an array of hashes that have been pruned
-func (bt *BlockTree) Prune(finalized Hash) (pruned []Hash) {
+func (bt *BlockTree) Prune(finalised Hash) (pruned []Hash) {
 	bt.Lock()
 	defer bt.Unlock()
 
-	if finalized == bt.head.hash {
+	if finalised == bt.head.hash {
 		return pruned
 	}
 
-	n := bt.getNode(finalized)
+	n := bt.getNode(finalised)
 	if n == nil {
 		return pruned
 	}
@@ -192,7 +192,7 @@ func (bt *BlockTree) Prune(finalized Hash) (pruned []Hash) {
 	return pruned
 }
 
-// String utilizes github.com/disiqueira/gotree to create a printable tree
+// String utilises github.com/disiqueira/gotree to create a printable tree
 func (bt *BlockTree) String() string {
 	bt.RLock()
 	defer bt.RUnlock()
@@ -230,7 +230,7 @@ func (bt *BlockTree) longestPath() []*node { //nolint
 }
 
 // subChain returns the path from the node with Hash start to the node with Hash end
-func (bt *BlockTree) subChain(start Hash, end Hash) ([]*node, error) {
+func (bt *BlockTree) subChain(start, end Hash) ([]*node, error) {
 	sn := bt.getNode(start)
 	if sn == nil {
 		return nil, ErrStartNodeNotFound
@@ -243,7 +243,7 @@ func (bt *BlockTree) subChain(start Hash, end Hash) ([]*node, error) {
 }
 
 // SubBlockchain returns the path from the node with Hash start to the node with Hash end
-func (bt *BlockTree) SubBlockchain(start Hash, end Hash) ([]Hash, error) {
+func (bt *BlockTree) SubBlockchain(start, end Hash) ([]Hash, error) {
 	bt.RLock()
 	defer bt.RUnlock()
 

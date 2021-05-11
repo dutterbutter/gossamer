@@ -10,7 +10,8 @@ exclude_patterns = [
     "chain/**/*",
     "dot/config/**/*",
     "dot/rpc/modules/test_data",
-    "lib/runtime/test_data"
+    "lib/runtime/test_data",
+    "**/*_test.go"
 ]
 
 [[analyzers]]
@@ -18,19 +19,4 @@ name = "go"
 enabled = true
 
 [analyzers.meta]
-import_paths = ["github.com/dutterbutter/gossamer"]
-
-[[analyzers]]
-name = "javascript"
-enabled = true
-
-[analyzers.meta]
-environment = ["mocha"]
-
-[[analyzers]]
-name = "test-coverage"
-enabled = true
-
-[[analyzers]]
-name = "secrets"
-enabled = true
+import_paths = ["github.com/ChainSafe/gossamer"]

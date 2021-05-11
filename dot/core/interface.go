@@ -22,8 +22,8 @@ import (
 	"github.com/ChainSafe/gossamer/dot/network"
 	"github.com/ChainSafe/gossamer/dot/types"
 	"github.com/ChainSafe/gossamer/lib/common"
+	"github.com/ChainSafe/gossamer/lib/grandpa"
 	rtstorage "github.com/ChainSafe/gossamer/lib/runtime/storage"
-	"github.com/ChainSafe/gossamer/lib/services"
 	"github.com/ChainSafe/gossamer/lib/transaction"
 )
 
@@ -39,14 +39,12 @@ type BlockState interface {
 	GetBlockByHash(common.Hash) (*types.Block, error)
 	GenesisHash() common.Hash
 	GetSlotForBlock(common.Hash) (uint64, error)
-	HighestBlockHash() common.Hash
-	HighestBlockNumber() *big.Int
 	GetFinalizedHeader(uint64, uint64) (*types.Header, error)
 	GetFinalizedHash(uint64, uint64) (common.Hash, error)
 	SetFinalizedHash(common.Hash, uint64, uint64) error
 	RegisterImportedChannel(ch chan<- *types.Block) (byte, error)
 	UnregisterImportedChannel(id byte)
-	RegisterFinalizedChannel(ch chan<- *types.Header) (byte, error)
+	RegisterFinalizedChannel(ch chan<- *types.FinalisationInfo) (byte, error)
 	UnregisterFinalizedChannel(id byte)
 	HighestCommonAncestor(a, b common.Hash) (common.Hash, error)
 	SubChain(start, end common.Hash) ([]common.Hash, error)
@@ -68,14 +66,6 @@ type TransactionState interface {
 	RemoveExtrinsic(ext types.Extrinsic)
 	RemoveExtrinsicFromPool(ext types.Extrinsic)
 	PendingInPool() []*transaction.ValidTransaction
-}
-
-// FinalityGadget is the interface that a finality gadget must implement
-type FinalityGadget interface {
-	services.Service
-
-	UpdateAuthorities(ad []*types.Authority)
-	Authorities() []*types.Authority
 }
 
 // BlockProducer is the interface that a block production service must implement
@@ -101,4 +91,13 @@ type EpochState interface {
 	SetConfigData(epoch uint64, info *types.ConfigData) error
 	SetCurrentEpoch(epoch uint64) error
 	GetCurrentEpoch() (uint64, error)
+}
+
+// GrandpaState is the interface for the state.GrandpaState
+type GrandpaState interface {
+	SetNextChange(authorities []*grandpa.Voter, number *big.Int) error
+	IncrementSetID() error
+	SetNextPause(number *big.Int) error
+	SetNextResume(number *big.Int) error
+	GetCurrentSetID() (uint64, error)
 }

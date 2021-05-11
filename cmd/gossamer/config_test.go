@@ -23,6 +23,7 @@ import (
 	"github.com/ChainSafe/gossamer/chain/gssmr"
 	"github.com/ChainSafe/gossamer/dot"
 	"github.com/ChainSafe/gossamer/dot/state"
+	"github.com/ChainSafe/gossamer/dot/types"
 	"github.com/ChainSafe/gossamer/lib/genesis"
 	"github.com/ChainSafe/gossamer/lib/utils"
 
@@ -45,21 +46,27 @@ func TestConfigFromChainFlag(t *testing.T) {
 	}{
 		{
 			"Test gossamer --chain gssmr",
-			[]string{"chain"},
-			[]interface{}{"gssmr"},
+			[]string{"chain", "name"},
+			[]interface{}{"gssmr", dot.GssmrConfig().Global.Name},
 			dot.GssmrConfig(),
 		},
 		{
-			"Test gossamer --chain ksmcc",
-			[]string{"chain"},
-			[]interface{}{"ksmcc"},
-			dot.KsmccConfig(),
+			"Test gossamer --chain kusama",
+			[]string{"chain", "name"},
+			[]interface{}{"kusama", dot.KusamaConfig().Global.Name},
+			dot.KusamaConfig(),
 		},
 		{
 			"Test gossamer --chain polkadot",
-			[]string{"chain"},
-			[]interface{}{"polkadot"},
+			[]string{"chain", "name"},
+			[]interface{}{"polkadot", dot.PolkadotConfig().Global.Name},
 			dot.PolkadotConfig(),
+		},
+		{
+			"Test gossamer --chain dev",
+			[]string{"chain", "name"},
+			[]interface{}{"dev", dot.DevConfig().Global.Name},
+			dot.DevConfig(),
 		},
 	}
 
@@ -93,11 +100,11 @@ func TestInitConfigFromFlags(t *testing.T) {
 		expected    dot.InitConfig
 	}{
 		{
-			"Test gossamer --genesis-raw",
-			[]string{"config", "genesis-raw"},
+			"Test gossamer --genesis",
+			[]string{"config", "genesis"},
 			[]interface{}{testCfgFile.Name(), "test_genesis"},
 			dot.InitConfig{
-				GenesisRaw: "test_genesis",
+				Genesis: "test_genesis",
 			},
 		},
 	}
@@ -133,24 +140,28 @@ func TestGlobalConfigFromFlags(t *testing.T) {
 	}{
 		{
 			"Test gossamer --config",
-			[]string{"config"},
-			[]interface{}{testCfgFile.Name()},
+			[]string{"config", "name"},
+			[]interface{}{testCfgFile.Name(), testCfg.Global.Name},
 			dot.GlobalConfig{
-				Name:     testCfg.Global.Name,
-				ID:       testCfg.Global.ID,
-				BasePath: testCfg.Global.BasePath,
-				LogLvl:   log.LvlInfo,
+				Name:           testCfg.Global.Name,
+				ID:             testCfg.Global.ID,
+				BasePath:       testCfg.Global.BasePath,
+				LogLvl:         log.LvlInfo,
+				PublishMetrics: testCfg.Global.PublishMetrics,
+				MetricsPort:    testCfg.Global.MetricsPort,
 			},
 		},
 		{
-			"Test gossamer --chain",
-			[]string{"config", "chain"},
-			[]interface{}{testCfgFile.Name(), "ksmcc"},
+			"Test kusama --chain",
+			[]string{"config", "chain", "name"},
+			[]interface{}{testCfgFile.Name(), "kusama", dot.KusamaConfig().Global.Name},
 			dot.GlobalConfig{
-				Name:     dot.KsmccConfig().Global.Name,
-				ID:       "ksmcc",
-				BasePath: dot.KsmccConfig().Global.BasePath,
-				LogLvl:   log.LvlInfo,
+				Name:           dot.KusamaConfig().Global.Name,
+				ID:             "ksmcc3",
+				BasePath:       dot.KusamaConfig().Global.BasePath,
+				LogLvl:         log.LvlInfo,
+				PublishMetrics: testCfg.Global.PublishMetrics,
+				MetricsPort:    testCfg.Global.MetricsPort,
 			},
 		},
 		{
@@ -158,32 +169,78 @@ func TestGlobalConfigFromFlags(t *testing.T) {
 			[]string{"config", "name"},
 			[]interface{}{testCfgFile.Name(), "test_name"},
 			dot.GlobalConfig{
-				Name:     "test_name",
-				ID:       testCfg.Global.ID,
-				BasePath: testCfg.Global.BasePath,
-				LogLvl:   log.LvlInfo,
+				Name:           "test_name",
+				ID:             testCfg.Global.ID,
+				BasePath:       testCfg.Global.BasePath,
+				LogLvl:         log.LvlInfo,
+				PublishMetrics: testCfg.Global.PublishMetrics,
+				MetricsPort:    testCfg.Global.MetricsPort,
 			},
 		},
 		{
 			"Test gossamer --basepath",
-			[]string{"config", "basepath"},
-			[]interface{}{testCfgFile.Name(), "test_basepath"},
+			[]string{"config", "basepath", "name"},
+			[]interface{}{testCfgFile.Name(), "test_basepath", testCfg.Global.Name},
 			dot.GlobalConfig{
-				Name:     testCfg.Global.Name,
-				ID:       testCfg.Global.ID,
-				BasePath: "test_basepath",
-				LogLvl:   log.LvlInfo,
+				Name:           testCfg.Global.Name,
+				ID:             testCfg.Global.ID,
+				BasePath:       "test_basepath",
+				LogLvl:         log.LvlInfo,
+				PublishMetrics: testCfg.Global.PublishMetrics,
+				MetricsPort:    testCfg.Global.MetricsPort,
 			},
 		},
 		{
 			"Test gossamer --roles",
-			[]string{"config", "roles"},
-			[]interface{}{testCfgFile.Name(), "1"},
+			[]string{"config", "roles", "name"},
+			[]interface{}{testCfgFile.Name(), "1", testCfg.Global.Name},
 			dot.GlobalConfig{
-				Name:     testCfg.Global.Name,
-				ID:       testCfg.Global.ID,
-				BasePath: testCfg.Global.BasePath,
-				LogLvl:   log.LvlInfo,
+				Name:           testCfg.Global.Name,
+				ID:             testCfg.Global.ID,
+				BasePath:       testCfg.Global.BasePath,
+				LogLvl:         log.LvlInfo,
+				PublishMetrics: testCfg.Global.PublishMetrics,
+				MetricsPort:    testCfg.Global.MetricsPort,
+			},
+		},
+		{
+			"Test gossamer --publish-metrics",
+			[]string{"config", "publish-metrics", "name"},
+			[]interface{}{testCfgFile.Name(), true, testCfg.Global.Name},
+			dot.GlobalConfig{
+				Name:           testCfg.Global.Name,
+				ID:             testCfg.Global.ID,
+				BasePath:       testCfg.Global.BasePath,
+				LogLvl:         log.LvlInfo,
+				PublishMetrics: true,
+				MetricsPort:    testCfg.Global.MetricsPort,
+			},
+		},
+		{
+			"Test gossamer --metrics-port",
+			[]string{"config", "metrics-port", "name"},
+			[]interface{}{testCfgFile.Name(), "9871", testCfg.Global.Name},
+			dot.GlobalConfig{
+				Name:           testCfg.Global.Name,
+				ID:             testCfg.Global.ID,
+				BasePath:       testCfg.Global.BasePath,
+				LogLvl:         log.LvlInfo,
+				PublishMetrics: testCfg.Global.PublishMetrics,
+				MetricsPort:    uint32(9871),
+			},
+		},
+		{
+			"Test gossamer --no-telemetry",
+			[]string{"config", "no-telemetry", "name"},
+			[]interface{}{testCfgFile.Name(), true, testCfg.Global.Name},
+			dot.GlobalConfig{
+				Name:           testCfg.Global.Name,
+				ID:             testCfg.Global.ID,
+				BasePath:       testCfg.Global.BasePath,
+				LogLvl:         log.LvlInfo,
+				PublishMetrics: testCfg.Global.PublishMetrics,
+				MetricsPort:    testCfg.Global.MetricsPort,
+				NoTelemetry:    true,
 			},
 		},
 	}
@@ -614,17 +671,19 @@ func TestUpdateConfigFromGenesisJSON(t *testing.T) {
 
 	ctx, err := newTestContext(
 		t.Name(),
-		[]string{"config", "genesis-raw"},
-		[]interface{}{testCfgFile.Name(), genFile.Name()},
+		[]string{"config", "genesis", "name"},
+		[]interface{}{testCfgFile.Name(), genFile.Name(), testCfg.Global.Name},
 	)
 	require.Nil(t, err)
 
 	expected := &dot.Config{
 		Global: dot.GlobalConfig{
-			Name:     testCfg.Global.Name,
-			ID:       testCfg.Global.ID,
-			BasePath: testCfg.Global.BasePath,
-			LogLvl:   testCfg.Global.LogLvl,
+			Name:           testCfg.Global.Name,
+			ID:             testCfg.Global.ID,
+			BasePath:       testCfg.Global.BasePath,
+			LogLvl:         testCfg.Global.LogLvl,
+			PublishMetrics: testCfg.Global.PublishMetrics,
+			MetricsPort:    testCfg.Global.MetricsPort,
 		},
 		Log: dot.LogConfig{
 			CoreLvl:           log.LvlInfo,
@@ -637,7 +696,7 @@ func TestUpdateConfigFromGenesisJSON(t *testing.T) {
 			FinalityGadgetLvl: log.LvlInfo,
 		},
 		Init: dot.InitConfig{
-			GenesisRaw: genFile.Name(),
+			Genesis: genFile.Name(),
 		},
 		Account: testCfg.Account,
 		Core:    testCfg.Core,
@@ -649,7 +708,7 @@ func TestUpdateConfigFromGenesisJSON(t *testing.T) {
 	cfg, err := createDotConfig(ctx)
 	require.Nil(t, err)
 
-	cfg.Init.GenesisRaw = genFile.Name()
+	cfg.Init.Genesis = genFile.Name()
 	updateDotConfigFromGenesisJSONRaw(*dotConfigToToml(testCfg), cfg)
 	require.Equal(t, expected, cfg)
 }
@@ -664,17 +723,19 @@ func TestUpdateConfigFromGenesisJSON_Default(t *testing.T) {
 
 	ctx, err := newTestContext(
 		t.Name(),
-		[]string{"config", "genesis-raw"},
-		[]interface{}{testCfgFile.Name(), ""},
+		[]string{"config", "genesis", "name"},
+		[]interface{}{testCfgFile.Name(), "", testCfg.Global.Name},
 	)
 	require.Nil(t, err)
 
 	expected := &dot.Config{
 		Global: dot.GlobalConfig{
-			Name:     testCfg.Global.Name,
-			ID:       testCfg.Global.ID,
-			BasePath: testCfg.Global.BasePath,
-			LogLvl:   testCfg.Global.LogLvl,
+			Name:           testCfg.Global.Name,
+			ID:             testCfg.Global.ID,
+			BasePath:       testCfg.Global.BasePath,
+			LogLvl:         testCfg.Global.LogLvl,
+			PublishMetrics: testCfg.Global.PublishMetrics,
+			MetricsPort:    testCfg.Global.MetricsPort,
 		},
 		Log: dot.LogConfig{
 			CoreLvl:           log.LvlInfo,
@@ -687,7 +748,7 @@ func TestUpdateConfigFromGenesisJSON_Default(t *testing.T) {
 			FinalityGadgetLvl: log.LvlInfo,
 		},
 		Init: dot.InitConfig{
-			GenesisRaw: DefaultCfg().Init.GenesisRaw,
+			Genesis: DefaultCfg().Init.Genesis,
 		},
 		Account: testCfg.Account,
 		Core:    testCfg.Core,
@@ -695,9 +756,6 @@ func TestUpdateConfigFromGenesisJSON_Default(t *testing.T) {
 		RPC:     testCfg.RPC,
 		System:  testCfg.System,
 	}
-
-	expected.Core.BabeThresholdNumerator = 0
-	expected.Core.BabeThresholdDenominator = 0
 
 	cfg, err := createDotConfig(ctx)
 	require.Nil(t, err)
@@ -713,17 +771,19 @@ func TestUpdateConfigFromGenesisData(t *testing.T) {
 
 	ctx, err := newTestContext(
 		t.Name(),
-		[]string{"config", "genesis"},
-		[]interface{}{testCfgFile.Name(), genFile.Name()},
+		[]string{"config", "genesis", "name"},
+		[]interface{}{testCfgFile.Name(), genFile.Name(), testCfg.Global.Name},
 	)
 	require.Nil(t, err)
 
 	expected := &dot.Config{
 		Global: dot.GlobalConfig{
-			Name:     testCfg.Global.Name,
-			ID:       testCfg.Global.ID,
-			BasePath: testCfg.Global.BasePath,
-			LogLvl:   testCfg.Global.LogLvl,
+			Name:           testCfg.Global.Name,
+			ID:             testCfg.Global.ID,
+			BasePath:       testCfg.Global.BasePath,
+			LogLvl:         testCfg.Global.LogLvl,
+			PublishMetrics: testCfg.Global.PublishMetrics,
+			MetricsPort:    testCfg.Global.MetricsPort,
 		},
 		Log: dot.LogConfig{
 			CoreLvl:           log.LvlInfo,
@@ -736,7 +796,7 @@ func TestUpdateConfigFromGenesisData(t *testing.T) {
 			FinalityGadgetLvl: log.LvlInfo,
 		},
 		Init: dot.InitConfig{
-			GenesisRaw: genFile.Name(),
+			Genesis: genFile.Name(),
 		},
 		Account: testCfg.Account,
 		Core:    testCfg.Core,
@@ -754,9 +814,7 @@ func TestUpdateConfigFromGenesisData(t *testing.T) {
 	cfg, err := createDotConfig(ctx)
 	require.Nil(t, err)
 
-	cfg.Init.GenesisRaw = genFile.Name()
-	expected.Core.BabeThresholdNumerator = 0
-	expected.Core.BabeThresholdDenominator = 0
+	cfg.Init.Genesis = genFile.Name()
 
 	db, err := chaindb.NewBadgerDB(&chaindb.Config{
 		DataDir: cfg.Global.BasePath,
@@ -766,7 +824,7 @@ func TestUpdateConfigFromGenesisData(t *testing.T) {
 	gen, err := genesis.NewGenesisFromJSONRaw(genFile.Name())
 	require.Nil(t, err)
 
-	err = state.StoreGenesisData(db, gen.GenesisData())
+	err = state.NewBaseState(db).StoreGenesisData(gen.GenesisData())
 	require.Nil(t, err)
 
 	err = db.Close()
@@ -776,4 +834,141 @@ func TestUpdateConfigFromGenesisData(t *testing.T) {
 	require.Nil(t, err)
 
 	require.Equal(t, expected, cfg)
+}
+
+func TestGlobalNodeName_WhenNodeAlreadyHasStoredName(t *testing.T) {
+	// Initialise a node with a random name
+	globalName := dot.RandomNodeName()
+
+	cfg := dot.NewTestConfig(t)
+	cfg.Global.Name = globalName
+	require.NotNil(t, cfg)
+
+	genPath := dot.NewTestGenesisAndRuntime(t)
+	require.NotNil(t, genPath)
+
+	defer utils.RemoveTestDir(t)
+
+	cfg.Core.Roles = types.FullNodeRole
+	cfg.Core.BabeAuthority = false
+	cfg.Core.GrandpaAuthority = false
+	cfg.Init.Genesis = genPath
+
+	err := dot.InitNode(cfg)
+	require.NoError(t, err)
+
+	// call another command and test the name
+	testApp := cli.NewApp()
+	testApp.Writer = ioutil.Discard
+
+	testcases := []struct {
+		description string
+		flags       []string
+		values      []interface{}
+		expected    string
+	}{
+		{
+			"Test gossamer --roles --basepath",
+			[]string{"basepath", "roles"},
+			[]interface{}{cfg.Global.BasePath, "4"},
+			globalName,
+		},
+		{
+			"Test gossamer --roles",
+			[]string{"basepath", "roles"},
+			[]interface{}{cfg.Global.BasePath, "0"},
+			globalName,
+		},
+	}
+
+	for _, c := range testcases {
+		c := c // bypass scopelint false positive
+		t.Run(c.description, func(t *testing.T) {
+			ctx, err := newTestContext(c.description, c.flags, c.values)
+			require.Nil(t, err)
+			createdCfg, err := createDotConfig(ctx)
+			require.Nil(t, err)
+			require.Equal(t, c.expected, createdCfg.Global.Name)
+		})
+	}
+}
+
+func TestGlobalNodeNamePriorityOrder(t *testing.T) {
+	cfg, testCfgFile := newTestConfigWithFile(t)
+	require.NotNil(t, cfg)
+	require.NotNil(t, testCfgFile)
+
+	defer utils.RemoveTestDir(t)
+
+	// call another command and test the name
+	testApp := cli.NewApp()
+	testApp.Writer = ioutil.Discard
+
+	// when name flag is defined
+	whenNameFlagIsDefined := struct {
+		description string
+		flags       []string
+		values      []interface{}
+		expected    string
+	}{
+		"Test gossamer --basepath --name --config",
+		[]string{"basepath", "name", "config"},
+		[]interface{}{cfg.Global.BasePath, "mydefinedname", testCfgFile.Name()},
+		"mydefinedname",
+	}
+
+	c := whenNameFlagIsDefined
+	t.Run(c.description, func(t *testing.T) {
+		ctx, err := newTestContext(c.description, c.flags, c.values)
+		require.Nil(t, err)
+		createdCfg, err := createDotConfig(ctx)
+		require.Nil(t, err)
+		require.Equal(t, c.expected, createdCfg.Global.Name)
+	})
+
+	// when name flag is not defined
+	// then should load name from toml if it exists
+	whenNameIsDefinedOnTomlConfig := struct {
+		description string
+		flags       []string
+		values      []interface{}
+		expected    string
+	}{
+		"Test gossamer --basepath --config",
+		[]string{"basepath", "config"},
+		[]interface{}{cfg.Global.BasePath, testCfgFile.Name()},
+		cfg.Global.Name,
+	}
+
+	c = whenNameIsDefinedOnTomlConfig
+	t.Run(c.description, func(t *testing.T) {
+		ctx, err := newTestContext(c.description, c.flags, c.values)
+		require.Nil(t, err)
+		createdCfg, err := createDotConfig(ctx)
+		require.Nil(t, err)
+		require.Equal(t, c.expected, createdCfg.Global.Name)
+	})
+
+	// when there is no name flag and no name in config
+	// should check the load is initialised or generate a new random name
+	cfg.Global.Name = ""
+
+	whenThereIsNoName := struct {
+		description string
+		flags       []string
+		values      []interface{}
+	}{
+		"Test gossamer --basepath",
+		[]string{"basepath"},
+		[]interface{}{cfg.Global.BasePath},
+	}
+
+	t.Run(c.description, func(t *testing.T) {
+		ctx, err := newTestContext(whenThereIsNoName.description, whenThereIsNoName.flags, whenThereIsNoName.values)
+		require.Nil(t, err)
+		createdCfg, err := createDotConfig(ctx)
+		require.Nil(t, err)
+		require.NotEmpty(t, createdCfg.Global.Name)
+		require.NotEqual(t, cfg.Global.Name, createdCfg.Global.Name)
+	})
 }

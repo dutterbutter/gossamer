@@ -1,5 +1,5 @@
 <div align="center">
-  <img alt="Gossamer logo" src="/docs/assets/img/gossamer_banner.png" width="600" />
+  <img alt="Gossamer logo" src="/docs/docs/assets/img/gossamer_banner.png" width="600" />
 </div>
 <div align="center">
   <a href="https://www.gnu.org/licenses/gpl-3.0">
@@ -16,11 +16,8 @@
   </a>
 </div>
 <div align="center">
-  <a href="https://codeclimate.com/github/ChainSafe/gossamer/badges">
-    <img alt="maintainability" src="https://img.shields.io/codeclimate/maintainability/ChainSafe/gossamer?style=for-the-badge" height="20" />
-  </a>
-  <a href="https://codeclimate.com/github/ChainSafe/gossamer/test_coverage">
-    <img alt="Test Coverage" src="https://img.shields.io/codeclimate/coverage/ChainSafe/gossamer?style=for-the-badge" height="20" />
+  <a href="https://app.codecov.io/gh/ChainSafe/gossamer">
+    <img alt="Test Coverage" src="https://img.shields.io/codecov/c/github/ChainSafe/gossamer/development?style=for-the-badge" height="20" />
   </a>
     <a href="https://discord.gg/zy8eRF7FG2">
     <img alt="Discord" src="https://img.shields.io/discord/593655374469660673.svg?style=for-the-badge&label=Discord&logo=discord" height="20"/>
@@ -29,7 +26,7 @@
     <img alt="Gossamer Blog" src="https://img.shields.io/badge/Medium-grey?style=for-the-badge&logo=medium" height="20" />
   </a>
     <a href="https://medium.com/chainsafe-systems/tagged/polkadot">
-    <img alt="Gossamer Blog" src="https://img.shields.io/twitter/follow/chainsafeth?color=blue&label=follow&logo=twitter&style=for-the-badge" height="20"/>
+    <img alt="Twitter" src="https://img.shields.io/twitter/follow/chainsafeth?color=blue&label=follow&logo=twitter&style=for-the-badge" height="20"/>
   </a>
 </div>
 <br />
@@ -63,7 +60,7 @@ make gossamer
 
 ### Run Default Node
 
-initialize default node:
+initialise default node:
 ```
 ./bin/gossamer --chain gssmr init
 ```
@@ -88,16 +85,16 @@ babe-threshold-denominator = 1
 
 Then, re-run the above steps. NOTE: this feature is for testing only; if you wish to change the BABE block production parameters, you need to create a modified runtime.
 
-### Run Kusama Node (_in development_)
+### Run Kusama Node
 
-initialize kusama node:
+initialise kusama node:
 ```
-./bin/gossamer --chain ksmcc init
+./bin/gossamer --chain kusama init
 ```
 
 start kusama node:
 ```
-./bin/gossamer --chain ksmcc
+./bin/gossamer --chain kusama
 ```
 
 The node may not appear to do anything for the first minute or so (it's bootstrapping to the network.) If you wish to see what is it doing in this time, you can turn on debug logs in `chain/gssmr/config.toml`:
@@ -109,11 +106,9 @@ network = "debug"
 
 After it's finished bootstrapping, the node should begin to sync. 
 
-### Run Polkadot Node (_in development_)
+### Run Polkadot Node
 
-NOTE: This is currently not supported.
-
-initialize polkadot node:
+initialise polkadot node:
 ```
 ./bin/gossamer --chain polkadot init
 ```

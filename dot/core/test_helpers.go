@@ -17,7 +17,6 @@
 package core
 
 import (
-	"io"
 	"io/ioutil"
 	"math/big"
 	"testing"
@@ -31,9 +30,9 @@ import (
 	"github.com/ChainSafe/gossamer/lib/genesis"
 	"github.com/ChainSafe/gossamer/lib/keystore"
 	"github.com/ChainSafe/gossamer/lib/runtime"
+	rtstorage "github.com/ChainSafe/gossamer/lib/runtime/storage"
 	"github.com/ChainSafe/gossamer/lib/runtime/wasmer"
 	"github.com/ChainSafe/gossamer/lib/trie"
-
 	log "github.com/ChainSafe/log15"
 	"github.com/stretchr/testify/require"
 )
@@ -42,16 +41,16 @@ import (
 var testMessageTimeout = time.Second
 
 func newTestGenesisWithTrieAndHeader(t *testing.T) (*genesis.Genesis, *trie.Trie, *types.Header) {
-	gen, err := genesis.NewGenesisFromJSONRaw("../../chain/gssmr/genesis-raw.json")
+	gen, err := genesis.NewGenesisFromJSONRaw("../../chain/gssmr/genesis.json")
 	if err != nil {
-		gen, err = genesis.NewGenesisFromJSONRaw("../../../chain/gssmr/genesis-raw.json")
+		gen, err = genesis.NewGenesisFromJSONRaw("../../../chain/gssmr/genesis.json")
 		require.NoError(t, err)
 	}
 
 	genTrie, err := genesis.NewTrieFromGenesis(gen)
 	require.NoError(t, err)
 
-	genesisHeader, err := types.NewHeader(common.NewHash([]byte{0}), big.NewInt(0), genTrie.MustHash(), trie.EmptyHash, types.Digest{})
+	genesisHeader, err := types.NewHeader(common.NewHash([]byte{0}), genTrie.MustHash(), trie.EmptyHash, big.NewInt(0), types.Digest{})
 	require.NoError(t, err)
 	return gen, genTrie, genesisHeader
 }
@@ -97,39 +96,12 @@ func (n *mockNetwork) SendMessage(m network.NotificationsMessage) {
 	n.Message = m
 }
 
-// mockFinalityGadget implements the FinalityGadget interface
-type mockFinalityGadget struct {
-	auths []*types.Authority
-}
-
-// Start mocks starting
-func (fg *mockFinalityGadget) Start() error {
-	return nil
-}
-
-// Stop mocks stopping
-func (fg *mockFinalityGadget) Stop() error {
-	return nil
-}
-
-func (fg *mockFinalityGadget) UpdateAuthorities(ad []*types.Authority) {
-	fg.auths = ad
-}
-
-func (fg *mockFinalityGadget) Authorities() []*types.Authority {
-	return fg.auths
-}
-
 // NewTestService creates a new test core service
 func NewTestService(t *testing.T, cfg *Config) *Service {
 	if cfg == nil {
 		cfg = &Config{
 			IsBlockProducer: false,
 		}
-	}
-
-	if cfg.Runtime == nil {
-		cfg.Runtime = wasmer.NewTestInstance(t, runtime.NODE_RUNTIME)
 	}
 
 	if cfg.Keystore == nil {
@@ -155,12 +127,13 @@ func NewTestService(t *testing.T, cfg *Config) *Service {
 	testDatadirPath, err := ioutil.TempDir("/tmp", "test-datadir-*")
 	require.NoError(t, err)
 
+	gen, genTrie, genHeader := newTestGenesisWithTrieAndHeader(t)
+
 	if cfg.BlockState == nil || cfg.StorageState == nil || cfg.TransactionState == nil || cfg.EpochState == nil {
 		stateSrvc = state.NewService(testDatadirPath, log.LvlInfo)
 		stateSrvc.UseMemDB()
 
-		gen, genTrie, genHeader := newTestGenesisWithTrieAndHeader(t)
-		err = stateSrvc.Initialize(gen, genHeader, genTrie)
+		err = stateSrvc.Initialise(gen, genHeader, genTrie)
 		require.Nil(t, err)
 
 		err = stateSrvc.Start()
@@ -181,6 +154,14 @@ func NewTestService(t *testing.T, cfg *Config) *Service {
 
 	if cfg.EpochState == nil {
 		cfg.EpochState = stateSrvc.Epoch
+	}
+
+	if cfg.Runtime == nil {
+		rtCfg := &wasmer.Config{}
+		rtCfg.Storage, err = rtstorage.NewTrieState(genTrie)
+		require.NoError(t, err)
+		cfg.Runtime, err = wasmer.NewRuntimeFromGenesis(gen, rtCfg)
+		require.NoError(t, err)
 	}
 
 	if cfg.Network == nil {
@@ -248,39 +229,19 @@ func (s *mockSyncer) HandleBlockAnnounce(msg *network.BlockAnnounceMessage) erro
 	return nil
 }
 
-func (s *mockSyncer) ProcessBlockData(_ []*types.BlockData) error {
-	return nil
+func (s *mockSyncer) ProcessBlockData(_ []*types.BlockData) (int, error) {
+	return 0, nil
+}
+
+func (s *mockSyncer) ProcessJustification(data []*types.BlockData) (int, error) {
+	return 0, nil
 }
 
 func (s *mockSyncer) IsSynced() bool {
 	return false
 }
 
-type mockDigestItem struct {
-	i int
-}
-
-func newMockDigestItem(i int) *mockDigestItem {
-	return &mockDigestItem{
-		i: i,
-	}
-}
-
-func (d *mockDigestItem) String() string {
-	return ""
-}
-
-func (d *mockDigestItem) Type() byte {
-	return byte(d.i)
-}
-
-func (d *mockDigestItem) Encode() ([]byte, error) {
-	return []byte{byte(d.i)}, nil
-}
-
-func (d *mockDigestItem) Decode(_ io.Reader) error {
-	return nil
-}
+func (s *mockSyncer) SetSyncing(bool) {}
 
 type mockTransactionHandler struct{}
 
