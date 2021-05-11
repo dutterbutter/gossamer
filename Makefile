@@ -65,7 +65,7 @@ it-sync: build
 
 it-polkadotjs: build
 	@echo "  >  \033[32mRunning Integration Tests polkadot.js/api mode...\033[0m "
-	cd ./tests/polkadotjs_test && yarn
+	cd ./tests/polkadotjs_test && yarn &&
 	HOSTNAME=0.0.0.0 MODE=polkadot go test ./tests/polkadotjs_test/... -timeout=5m -v
 
 ## test: Runs `go test -race` on project test files.
