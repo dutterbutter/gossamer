@@ -63,6 +63,8 @@ jobs:
             flags: unit-tests
             name: coverage
             verbose: true
+            if_ci_failed: success
+            informational: false
 
   docker-stable-tests:
     runs-on: ubuntu-latest

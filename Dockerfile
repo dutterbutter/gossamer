@@ -6,7 +6,9 @@ RUN apt-get update && \
     gcc \
     cmake \
     wget \
-    yarn
+    nodejs \
+    npm \
+    yarn 
 
 # Install Go
 RUN wget https://dl.google.com/go/go1.15.5.linux-amd64.tar.gz
