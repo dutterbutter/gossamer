@@ -181,6 +181,4 @@ jobs:
       -
         name: Run polkadotjs tests
         run: |
-          echo $PWD
-          cd ./tests/polkadotjs_test && yarn && sudo npm i -g npx
           docker run dutterbutter/gossamer:test sh -c "make it-polkadotjs"
