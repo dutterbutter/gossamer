@@ -6,12 +6,11 @@ RUN apt-get update && \
     gcc \
     cmake \
     wget \
-    nodejs \
+    nodejs=14.16.1 \
     npm \
-    yarn 
 
-# Install Go
-RUN wget https://dl.google.com/go/go1.15.5.linux-amd64.tar.gz
+    # Install Go
+    RUN wget https://dl.google.com/go/go1.15.5.linux-amd64.tar.gz
 RUN tar -C /usr/local -xzf go1.15.5.linux-amd64.tar.gz
 
 # Install subkey
