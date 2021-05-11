@@ -39,6 +39,9 @@ RUN go mod download
 # Copy gossamer sources
 COPY . $GOPATH/src/github.com/ChainSafe/gossamer
 
+# Install js dependencies for polkadot.js tests
+RUN cd $GOPATH/src/github.com/ChainSafe/gossamer/tests/polkadotjs_test && npm install
+
 # Build
 RUN GOBIN=$GOPATH/src/github.com/ChainSafe/gossamer/bin go run scripts/ci.go install
 
