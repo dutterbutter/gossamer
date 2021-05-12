@@ -9,9 +9,10 @@ RUN apt-get update && \
     curl \
     npm 
 
+# Install node source for polkadotjs tests
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 
-# Install nodejs
+# Install nodejs for polkadotjs tests
 RUN apt-get update && \
     apt-get install -y \
     nodejs
@@ -44,9 +45,6 @@ RUN go mod download
 
 # Copy gossamer sources
 COPY . $GOPATH/src/github.com/ChainSafe/gossamer
-
-# Install js dependencies for polkadot.js tests
-RUN cd $GOPATH/src/github.com/ChainSafe/gossamer/tests/polkadotjs_test && npm install
 
 # Build
 RUN GOBIN=$GOPATH/src/github.com/ChainSafe/gossamer/bin go run scripts/ci.go install

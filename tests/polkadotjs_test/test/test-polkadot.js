@@ -23,7 +23,7 @@ describe('Testing polkadot.js/api calls:', function () {
 
     beforeEach ( async function () {
         // this is for handling connection issues to api, if not connected
-        //  wait then try again, if still not corrected, close test
+        // wait then try again, if still not corrected, close test
         this.timeout(5000);
 
         if (api == undefined) {
