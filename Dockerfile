@@ -61,5 +61,4 @@ RUN chmod +x $GOPATH/src/github.com/ChainSafe/gossamer/scripts/docker-entrypoint
 # Expose gossamer command and port
 ENTRYPOINT ["/gocode/src/github.com/ChainSafe/gossamer/scripts/docker-entrypoint.sh"]
 CMD ["/usr/local/gossamer"]
-EXPOSE 7001
-EXPOSE 8546
+EXPOSE 7001 8546 8540
