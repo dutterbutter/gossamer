@@ -6,11 +6,15 @@ RUN apt-get update && \
     gcc \
     cmake \
     wget \
-    nodejs=14.16.1 \
-    npm \
+    curl \
+    npm 
 
-    # Install Go
-    RUN wget https://dl.google.com/go/go1.15.5.linux-amd64.tar.gz
+RUN curl -sL https://deb.nodesource.com/setup_14.x | sudo bash -
+
+RUN apt-get install -y \ nodejs
+
+# Install Go
+RUN wget https://dl.google.com/go/go1.15.5.linux-amd64.tar.gz
 RUN tar -C /usr/local -xzf go1.15.5.linux-amd64.tar.gz
 
 # Install subkey
