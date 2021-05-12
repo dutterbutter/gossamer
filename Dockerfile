@@ -11,7 +11,10 @@ RUN apt-get update && \
 
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 
-RUN apt-get install -y \ nodejs
+# Install nodejs
+RUN apt-get update && \
+    apt-get install -y \
+    nodejs
 
 # Install Go
 RUN wget https://dl.google.com/go/go1.15.5.linux-amd64.tar.gz
