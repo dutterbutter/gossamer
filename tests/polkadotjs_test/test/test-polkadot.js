@@ -106,14 +106,19 @@ describe('Testing polkadot.js/api calls:', function () {
         });
 
         it('call api.rpc.chain.subscribeNewHeads()', async function () {
-            let count = 0;
-            const unsubHeads = await api.rpc.chain.subscribeNewHeads((lastHeader) => {
+            try {
+                let count = 0;
+                const unsubHeads = await api.rpc.chain.subscribeNewHeads((lastHeader) => {
                 expect(lastHeader).to.have.property('hash').to.have.lengthOf(32);
                 expect(lastHeader).to.have.property('number')
                 if (++count === 3) {
                     unsubHeads();
                 }
             });
+            } catch (err) {
+                console.log(err);
+                done()
+            }
         });
 
         it('call api.rpc.chain.getBlockHash()', async function () {
