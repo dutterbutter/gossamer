@@ -23,7 +23,7 @@ describe('Testing polkadot.js/api calls:', function () {
 
     beforeEach ( async function () {
         // this is for handling connection issues to api, if not connected
-        //  wait then try again, if still not corrected, close test
+        // wait then try again, if still not corrected, close test
         this.timeout(5000);
 
         if (api == undefined) {
@@ -106,14 +106,18 @@ describe('Testing polkadot.js/api calls:', function () {
         });
 
         it('call api.rpc.chain.subscribeNewHeads()', async function () {
-            let count = 0;
-            const unsubHeads = await api.rpc.chain.subscribeNewHeads((lastHeader) => {
+            try {
+                let count = 0;
+                const unsubHeads = await api.rpc.chain.subscribeNewHeads((lastHeader) => {
                 expect(lastHeader).to.have.property('hash').to.have.lengthOf(32);
                 expect(lastHeader).to.have.property('number')
                 if (++count === 3) {
                     unsubHeads();
                 }
             });
+            } catch (err) {
+                console.log(err);
+            }
         });
 
         it('call api.rpc.chain.getBlockHash()', async function () {
