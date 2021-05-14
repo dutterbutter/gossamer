@@ -114,6 +114,8 @@ describe('Testing polkadot.js/api calls:', function () {
                 if (++count === 3) {
                     unsubHeads();
                 }
+                console.log("DONEZO");
+                done()
             });
             } catch (err) {
                 console.log(err);
