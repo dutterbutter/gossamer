@@ -105,7 +105,7 @@ describe('Testing polkadot.js/api calls:', function () {
             expect(header).to.have.property('digest');
         });
 
-        it('call api.rpc.chain.subscribeNewHeads()', async function (done) {
+        it('call api.rpc.chain.subscribeNewHeads()', async function () {
             try {
                 let count = 0;
                 const unsubHeads = await api.rpc.chain.subscribeNewHeads((lastHeader) => {
@@ -114,12 +114,9 @@ describe('Testing polkadot.js/api calls:', function () {
                 if (++count === 3) {
                     unsubHeads();
                 }
-                console.log("DONEZO");
-                done()
             });
             } catch (err) {
                 console.log(err);
-                done()
             }
         });
 
